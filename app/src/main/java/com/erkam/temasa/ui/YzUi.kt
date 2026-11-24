@@ -283,6 +283,9 @@ fun YzScreen(vm: MainViewModel) {
                                     }
                                 }
                             }
+                            if (m.secenekler.isNotEmpty() && i == sohbet.lastIndex && calisiyor == null) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                m.secenekler.forEach { o -> Secenek(o, vurgulu = true) { Yz.gonder(o) } }
+                            }
                             if (m.videolar.isNotEmpty() && i == sohbet.lastIndex) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Secenek("Daha fazla bul") { Yz.gonder("Daha fazla bul") }
                                 Secenek("Hepsini sırayla oynat") { vm.open(m.videolar.first().video, m.videolar.map { it.video }) }
@@ -317,12 +320,14 @@ fun YzScreen(vm: MainViewModel) {
 }
 
 @Composable
-private fun Secenek(t: String, onClick: () -> Unit) {
+private fun Secenek(t: String, vurgulu: Boolean = false, onClick: () -> Unit) {
     Box(
-        Modifier.height(32.dp).clip(RoundedCornerShape(16.dp)).border(1.dp, Color(0xFF3A3A3A), RoundedCornerShape(16.dp))
-            .clickable(onClick = onClick).padding(horizontal = 12.dp),
+        Modifier.heightIn(min = 34.dp).clip(RoundedCornerShape(17.dp))
+            .background(if (vurgulu) TurkuazZemin else Color.Transparent)
+            .border(1.dp, if (vurgulu) Turkuaz.copy(alpha = 0.45f) else Color(0xFF3A3A3A), RoundedCornerShape(17.dp))
+            .clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 7.dp),
         contentAlignment = Alignment.Center
-    ) { Text(t, color = C.text, fontSize = 13.sp) }
+    ) { Text(t, color = if (vurgulu) Color(0xFFE6FAF7) else C.text, fontSize = 13.sp) }
 }
 
 // ======================= Videoda "Sor": Özet · Önemli anlar · Sor =======================
@@ -334,6 +339,8 @@ fun YzPenceresi(vm: MainViewModel, v: Video) {
     val ozet by b.ozet.collectAsState()
     val hata by b.ozetHata.collectAsState()
     val ozetleniyor by b.ozetleniyor.collectAsState()
+    val anlar by b.anlar.collectAsState()
+    val anlarYukleniyor by b.anlarYukleniyor.collectAsState()
     val sorular by b.sorular.collectAsState()
     val soruyor by b.soruyor.collectAsState()
     var sekme by remember(v.id) { mutableIntStateOf(if (b.sorular.value.isNotEmpty()) 2 else 0) }
@@ -369,7 +376,7 @@ fun YzPenceresi(vm: MainViewModel, v: Video) {
 
             LazyColumn(state = list, modifier = Modifier.weight(1f).fillMaxWidth(), contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 16.dp, end = 16.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (!Evren.hazir) item { AnahtarKarti(vm) }
-                else if (sekme != 2 && ozet == null) item {
+                else if (sekme == 0 && ozet?.ozet.isNullOrBlank()) item {
                     if (ozetleniyor) Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 8.dp)) {
                         CircularProgressIndicator(color = Turkuaz, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
                         Text("  Videoyu okuyorum…", style = T.meta.copy(fontSize = 13.sp))
@@ -380,7 +387,7 @@ fun YzPenceresi(vm: MainViewModel, v: Video) {
                     }
                 }
                 val o = ozet
-                if (Evren.hazir && o != null && sekme == 0) {
+                if (Evren.hazir && o != null && o.ozet.isNotBlank() && sekme == 0) {
                     item { Text(o.ozet, style = T.body.copy(color = Color(0xFFE6E6E6), lineHeight = 21.sp)) }
                     if (o.onecikanlar.isNotEmpty()) {
                         item { Text("Öne çıkanlar", color = C.text2, fontSize = 13.sp, fontWeight = FontWeight.SemiBold) }
@@ -388,17 +395,25 @@ fun YzPenceresi(vm: MainViewModel, v: Video) {
                             Row { Text("•  ", style = T.body); Text(o.onecikanlar[i], style = T.body) }
                         }
                     }
-                    item {
+                    if (o.bitti) item {
                         Text(
                             (if (o.altyazidan) "Videonun altyazısından çıkarıldı" else "Bu videonun altyazısı yok; başlık ve açıklamadan çıkarıldı") + " · Yapay zekâ hata yapabilir",
                             color = Color(0xFF777777), fontSize = 11.sp
                         )
                     }
                 }
-                if (Evren.hazir && o != null && sekme == 1) {
-                    if (o.anlar.isEmpty()) item { Text("Bu videonun altyazısı olmadığı için önemli anları çıkaramadım.", style = T.body.copy(color = C.text2)) }
-                    items(o.anlar.size) { i ->
-                        val a = o.anlar[i]
+                if (Evren.hazir && sekme == 1) {
+                    val l = anlar
+                    if (l == null) item {
+                        if (hata != null && !ozetleniyor) Text(hata!!, color = Color(0xFFFF8A65), fontSize = 14.sp)
+                        else Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 8.dp)) {
+                            CircularProgressIndicator(color = Turkuaz, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+                            Text("  Bölümleri çıkarıyorum…", style = T.meta.copy(fontSize = 13.sp))
+                        }
+                    } else if (l.isEmpty()) item {
+                        Text(if (anlarYukleniyor) "Bölümleri çıkarıyorum…" else "Bu videonun altyazısı olmadığı için önemli anları çıkaramadım.", style = T.body.copy(color = C.text2))
+                    } else items(l.size) { i ->
+                        val a = l[i]
                         Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { git(a.ms) }.padding(vertical = 4.dp), verticalAlignment = Alignment.Top) {
                             Box(Modifier.height(26.dp).clip(RoundedCornerShape(6.dp)).background(Color(0x293EA6FF)).padding(horizontal = 8.dp), contentAlignment = Alignment.Center) {
                                 Text(Yz.zamanYaz(a.ms), color = C.blue, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
@@ -414,12 +429,12 @@ fun YzPenceresi(vm: MainViewModel, v: Video) {
                 if (Evren.hazir && sekme == 2) {
                     if (sorular.isEmpty()) {
                         item { Text("Bu video hakkında merak ettiğini sor. Cevabı videodan bulur, ilgili dakikayı gösteririm.", style = T.body.copy(color = C.text2)) }
-                        o?.sorular?.takeIf { it.isNotEmpty() }?.let { s ->
+                        o?.takeIf { it.bitti }?.sorular?.takeIf { it.isNotEmpty() }?.let { s ->
                             item {
                                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { s.forEach { q -> Secenek(q) { Yz.sor(v, q) } } }
                             }
                         }
-                        if (o == null && ozetleniyor) item { Text("Öneriler hazırlanıyor…", style = T.meta) }
+                        if (o?.bitti != true && ozetleniyor) item { Text("Öneriler hazırlanıyor…", style = T.meta) }
                     }
                     items(sorular.size) { i ->
                         val q = sorular[i]
@@ -439,7 +454,7 @@ fun YzPenceresi(vm: MainViewModel, v: Video) {
                                         Text("  Videoya bakıyorum…", style = T.meta.copy(fontSize = 13.sp))
                                     } else {
                                         Text(c, style = T.body.copy(color = if (q.hata) Color(0xFFFF8A65) else Color(0xFFE6E6E6), lineHeight = 21.sp))
-                                        q.ms?.let { ms ->
+                                        if (q.bitti) q.ms?.let { ms ->
                                             Row(
                                                 Modifier.height(30.dp).clip(RoundedCornerShape(15.dp)).background(Color(0x293EA6FF)).clickable { git(ms) }.padding(horizontal = 12.dp),
                                                 verticalAlignment = Alignment.CenterVertically
@@ -448,7 +463,7 @@ fun YzPenceresi(vm: MainViewModel, v: Video) {
                                                 Text(" ${Yz.zamanYaz(ms)}'dan izle", color = C.blue, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                                             }
                                         }
-                                        if (!q.hata) Row(Modifier.clickable { clip.setText(AnnotatedString(c)); vm.toast("Kopyalandı") }, verticalAlignment = Alignment.CenterVertically) {
+                                        if (q.bitti && !q.hata) Row(Modifier.clickable { clip.setText(AnnotatedString(c)); vm.toast("Kopyalandı") }, verticalAlignment = Alignment.CenterVertically) {
                                             Icon(Icons.Outlined.ContentCopy, null, tint = Color(0xFF9A9A9A), modifier = Modifier.size(14.dp))
                                             Text(" Kopyala", color = Color(0xFF9A9A9A), fontSize = 12.sp)
                                         }

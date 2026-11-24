@@ -152,6 +152,71 @@ object Evren {
             @Suppress("UNREACHABLE_CODE") ""
         }
 
+    /**
+     * Akışlı soru: cevap geldikçe [parca] çağrılır (o ana kadarki tüm metinle). Sonunda tam metni döner.
+     * Akış desteklenmezse normal soruya döner.
+     */
+    suspend fun akis(sistem: String, kullanici: String, model: String = hizliModel(), maxToken: Int = 800, parca: (String) -> Unit): String =
+        withContext(Dispatchers.IO) {
+            if (anahtar().isBlank()) throw EvrenHatasi("EVREN anahtarı girilmemiş.")
+            val govde = JSONObject()
+                .put("model", model)
+                .put("messages", JSONArray()
+                    .put(JSONObject().put("role", "system").put("content", sistem))
+                    .put(JSONObject().put("role", "user").put("content", kullanici)))
+                .put("stream", true)
+                .put("thinking", false)
+                .put("temperature", 0.2)
+                .put("max_tokens", maxToken)
+                .toString()
+            var denendi = false
+            while (true) {
+                val cagri = client.newCall(istek("/chat/completions", govde).newBuilder().header("Accept", "text/event-stream").build())
+                val r = cagri.execute()
+                r.use { yanit ->
+                    if (!yanit.isSuccessful) {
+                        val g = yanit.body.string()
+                        if (!denendi && g.contains("terms_not_accepted") && sartlariKabulEt()) { denendi = true; return@use null }
+                        throw hataCevir(yanit.code, g)
+                    }
+                    val tur = yanit.header("Content-Type").orEmpty()
+                    if (!tur.contains("event-stream")) {
+                        // Sunucu akış vermedi: tek parça cevap
+                        val m = JSONObject(yanit.body.string()).optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")
+                        val t = temizle(m?.optString("content").orEmpty())
+                        parca(t)
+                        return@withContext t
+                    }
+                    val sb = StringBuilder()
+                    val kaynak = yanit.body.source()
+                    var son = 0L
+                    while (!kaynak.exhausted()) {
+                        val satir = kaynak.readUtf8Line() ?: break
+                        if (!satir.startsWith("data:")) continue
+                        val veri = satir.removePrefix("data:").trim()
+                        if (veri == "[DONE]") break
+                        val d = runCatching { JSONObject(veri).optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("delta")?.optString("content") }.getOrNull()
+                        if (!d.isNullOrEmpty() && d != "null") {
+                            sb.append(d)
+                            val simdi = System.currentTimeMillis()
+                            if (simdi - son > 60) { son = simdi; parca(temizleAkis(sb.toString())) }
+                        }
+                    }
+                    val t = temizle(sb.toString())
+                    parca(t)
+                    return@withContext t
+                }
+            }
+            @Suppress("UNREACHABLE_CODE") ""
+        }
+
+    /** Akış sürerken: kapanmamış <think> bloğunu da gizle */
+    private fun temizleAkis(s: String): String {
+        val t = temizle(s)
+        val a = t.indexOf("<think>")
+        return if (a >= 0) t.substring(0, a) else t
+    }
+
     /** <think> bloklarını at */
     fun temizle(s: String): String = s.replace(Regex("(?s)<think>.*?</think>"), "").trim()
 

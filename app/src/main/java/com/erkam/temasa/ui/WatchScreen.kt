@@ -86,6 +86,8 @@ fun WatchScreen(vm: MainViewModel, onMinimize: () -> Unit) {
     val related by Player.related.collectAsState()
     val queue by Player.queue.collectAsState()
     val qi by Player.queueIndex.collectAsState()
+    // Yapay zekâ için altyazıyı önceden hazırla (ücretsiz, hızlandırır)
+    LaunchedEffect(info?.id) { val i = info; val v0 = video; if (i != null && v0 != null && i.id == v0.id && !v0.live) com.erkam.temasa.yz.Yz.hazirla(v0) }
     val aspect by Player.videoAspect.collectAsState()
     val chapters by Player.chapters.collectAsState()
     val settings by Store.settings.collectAsState()
