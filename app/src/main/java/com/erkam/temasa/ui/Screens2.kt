@@ -33,6 +33,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.PlaylistPlay
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.NorthWest
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Shuffle
@@ -214,89 +216,169 @@ private fun SuggestRow(s: String, history: Boolean, onClick: () -> Unit, onFill:
     }
 }
 
-// ---------------- Kanal ----------------
+// ---------------- Kanal (YouTube'daki gibi) ----------------
 
 @Composable
 fun ChannelScreen(vm: MainViewModel, id: String, name: String) {
-    var page by remember { mutableStateOf<ChannelPage?>(null) }
+    var head by remember { mutableStateOf<com.erkam.temasa.yt.ChannelHead?>(null) }
     var failed by remember { mutableStateOf(false) }
     var tab by remember { mutableIntStateOf(0) }
-    var items by remember { mutableStateOf<List<Any>>(emptyList()) }
-    var next by remember { mutableStateOf<Page?>(null) }
+    var sortIdx by remember { mutableIntStateOf(0) }
+    var sorts by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+    var videos by remember { mutableStateOf<List<Video>>(emptyList()) }
+    var shorts by remember { mutableStateOf<List<Video>>(emptyList()) }
+    var lists by remember { mutableStateOf<List<PlaylistRef>>(emptyList()) }
+    var next by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(true) }
+    var descOpen by remember { mutableStateOf(false) }
     val subs by Store.subs.collectAsState()
     val scope = rememberCoroutineScope()
     val list = rememberLazyListState()
-    val tabs = listOf("Videolar" to "videos", "Canlı" to "livestreams", "Listeler" to "playlists", "Hakkında" to "")
 
-    LaunchedEffect(id) { runCatching { Yt.channel(id) }.onSuccess { page = it }.onFailure { failed = true; loading = false } }
-    LaunchedEffect(page, tab) {
-        val p = page ?: return@LaunchedEffect
-        val key = tabs[tab].second
-        items = emptyList(); next = null
-        val t = p.tabs[key] ?: run { loading = false; return@LaunchedEffect }
-        loading = true
-        runCatching { Yt.channelTab(t) }.onSuccess { items = it.items; next = it.next }
+    // Gösterilecek sekmeler: Ana Sayfa / Gönderiler / Ara gibi olanlar hariç
+    val wanted = listOf("Videolar", "Shorts", "Canlı", "Podcast'ler", "Oynatma listeleri", "Sürümler")
+    val tabs = remember(head) { head?.tabs?.filter { it.first in wanted } ?: emptyList() }
+
+    LaunchedEffect(id) {
+        runCatching { withContext(Dispatchers.IO) { com.erkam.temasa.yt.Channels.head(id) } }
+            .onSuccess { head = it }
+            .onFailure { failed = true; loading = false }
+    }
+    fun apply(f: com.erkam.temasa.yt.ChannelFeed, append: Boolean) {
+        if (append) { videos = (videos + f.videos).distinctBy { it.id }; shorts = (shorts + f.shorts).distinctBy { it.id }; lists = (lists + f.playlists).distinctBy { it.id } }
+        else { videos = f.videos; shorts = f.shorts; lists = f.playlists }
+        next = f.next
+    }
+    LaunchedEffect(head, tab) {
+        val h = head ?: return@LaunchedEffect
+        val t = tabs.getOrNull(tab) ?: run { loading = false; return@LaunchedEffect }
+        loading = true; videos = emptyList(); shorts = emptyList(); lists = emptyList(); next = null; sortIdx = 0; sorts = emptyList()
+        runCatching { withContext(Dispatchers.IO) { com.erkam.temasa.yt.Channels.tab(h.id, t.second) } }
+            .onSuccess { f -> apply(f, false); sorts = f.sorts }
         loading = false
     }
     LoadMore(list) {
-        val p = page ?: return@LoadMore
         val n = next ?: return@LoadMore
-        val t = p.tabs[tabs[tab].second] ?: return@LoadMore
         if (loading) return@LoadMore
         loading = true
-        scope.launch { runCatching { Yt.channelTab(t, n) }.onSuccess { r -> items = items + r.items; next = r.next }; loading = false }
+        scope.launch {
+            runCatching { withContext(Dispatchers.IO) { com.erkam.temasa.yt.Channels.more(n) } }.onSuccess { apply(it, true) }
+            loading = false
+        }
     }
 
-    val ref = page?.ref ?: ChannelRef(id, name)
+    val h = head
+    val ref = ChannelRef(h?.id ?: id, h?.title ?: name, h?.avatar, h?.subs)
     val isSub = subs.any { it.id == ref.id }
     Column(Modifier.fillMaxSize()) {
-        BackBar(vm, ref.name.ifEmpty { name })
+        Row(Modifier.fillMaxWidth().statusBarsPadding().height(52.dp).padding(end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = { vm.pop() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Geri", tint = C.text) }
+            Spacer(Modifier.weight(1f))
+            IconButton(onClick = { vm.push(Screen.Search(ref.name.ifEmpty { null })) }) { Icon(Icons.Outlined.Search, "Ara", tint = C.text) }
+        }
         LazyColumn(state = list, modifier = Modifier.fillMaxSize()) {
-            item {
-                page?.banner?.let { b ->
+            item(key = "head") {
+                h?.banner?.let { b ->
                     AsyncImage(b, null, contentScale = ContentScale.Crop,
-                        modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth().aspectRatio(4.2f).clip(RoundedCornerShape(12.dp)))
+                        modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth().aspectRatio(4.2f).clip(RoundedCornerShape(12.dp)).background(C.chip))
                 }
-                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Avatar(ref.avatar, ref.name.ifEmpty { name }, 72.dp)
+                Row(Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Avatar(ref.avatar, ref.name.ifEmpty { "?" }, 88.dp)
                     Spacer(Modifier.width(16.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(ref.name.ifEmpty { name }, style = T.header.copy(fontSize = 22.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        ref.subs?.let { Text(it, style = T.meta) }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(ref.name, style = T.header.copy(fontSize = 24.sp, lineHeight = 28.sp), maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                            if (h?.verified == true) {
+                                Spacer(Modifier.width(6.dp))
+                                Icon(Icons.Filled.CheckCircle, "Doğrulanmış", tint = C.text2, modifier = Modifier.size(18.dp))
+                            }
+                        }
+                        h?.handle?.let { Text(it, style = T.body.copy(fontWeight = FontWeight.Medium), maxLines = 1) }
+                        Text(listOfNotNull(h?.subs, h?.videoCount).joinToString(" • "), style = T.meta.copy(fontSize = 13.sp))
                     }
                 }
+                if (!h?.description.isNullOrBlank()) {
+                    Row(Modifier.fillMaxWidth().clickable { descOpen = !descOpen }.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                        Text(
+                            if (descOpen) h!!.description else h!!.description.lines().first().take(60),
+                            style = T.body.copy(color = C.text2), maxLines = if (descOpen) Int.MAX_VALUE else 1, overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        if (!descOpen) Text(" ...devamı", style = T.body.copy(fontWeight = FontWeight.SemiBold))
+                    }
+                } else Spacer(Modifier.height(14.dp))
                 if (failed) Text("Kanal yüklenemedi.", style = T.body.copy(color = C.text2), modifier = Modifier.padding(16.dp))
-                if (page != null) {
+                if (h != null) {
                     Box(
-                        Modifier.padding(horizontal = 16.dp).fillMaxWidth().height(40.dp).clip(RoundedCornerShape(20.dp))
+                        Modifier.padding(horizontal = 16.dp).fillMaxWidth().height(44.dp).clip(RoundedCornerShape(22.dp))
                             .background(if (isSub) C.chip else C.text)
                             .clickable { scope.launch { if (!Account.subscribe(ref, !isSub)) vm.toast("İşlem YouTube'a iletilemedi") else if (!isSub) vm.toast("Abone olundu") } },
                         contentAlignment = Alignment.Center
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             if (isSub) { Icon(Icons.Outlined.NotificationsNone, null, tint = C.text, modifier = Modifier.size(20.dp)); Spacer(Modifier.width(6.dp)) }
-                            Text(if (isSub) "Abone olundu" else "Abone ol", color = if (isSub) C.text else C.bg, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Text(if (isSub) "Abone olundu" else "Abone ol", color = if (isSub) C.text else C.bg, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
-                    ChipRow(tabs.map { it.first }, tab) { tab = it }
-                }
-            }
-            if (tab == 3 && page != null) item {
-                Text(page!!.description.ifBlank { "Açıklama yok." }, style = T.body, modifier = Modifier.padding(16.dp))
-            }
-            if (loading && items.isEmpty() && tab != 3) items(3) { SkeletonCard() }
-            if (!loading && items.isEmpty() && tab != 3 && page != null) item { Text("Burada bir şey yok.", style = T.body.copy(color = C.text2), modifier = Modifier.padding(24.dp)) }
-            items(items, key = { r -> when (r) { is Video -> "v" + r.id; is PlaylistRef -> "p" + r.id; else -> r.hashCode().toString() } }) { r ->
-                when (r) {
-                    is Video -> {
-                        val vv = if (r.channelAvatar == null) r.copy(channelAvatar = ref.avatar, channel = r.channel.ifEmpty { ref.name }, channelId = r.channelId.ifEmpty { ref.id }) else r
-                        VideoCard(vv, onClick = { vm.open(vv, items.filterIsInstance<Video>()) }, onMore = { vm.menu.value = vv })
+                    Spacer(Modifier.height(10.dp))
+                    // Alt çizgili sekmeler
+                    androidx.compose.foundation.lazy.LazyRow(contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp)) {
+                        items(tabs.size) { i ->
+                            Column(Modifier.clickable { tab = i }.padding(horizontal = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    tabs[i].first, color = if (i == tab) C.text else C.text2, fontSize = 16.sp,
+                                    fontWeight = if (i == tab) FontWeight.SemiBold else FontWeight.Medium,
+                                    modifier = Modifier.padding(vertical = 12.dp)
+                                )
+                                Box(Modifier.height(2.dp).width(if (i == tab) 40.dp else 0.dp).background(C.text))
+                            }
+                        }
                     }
-                    is PlaylistRef -> PlaylistRow(r) { vm.push(Screen.Playlist(r.id, r.title)) }
+                    Divider()
+                    if (sorts.size > 1) ChipRow(sorts.map { it.first }, sortIdx) { i ->
+                        if (i == sortIdx) return@ChipRow
+                        sortIdx = i
+                        scope.launch {
+                            loading = true; videos = emptyList(); shorts = emptyList(); lists = emptyList()
+                            runCatching { withContext(Dispatchers.IO) { com.erkam.temasa.yt.Channels.more(sorts[i].second) } }.onSuccess { apply(it, false) }
+                            loading = false
+                        }
+                    }
                 }
             }
-            if (loading && items.isNotEmpty()) item { Loader() }
+            if (h != null && tabs.isEmpty() && !loading) item { Text("Bu kanalda video yok.", style = T.body.copy(color = C.text2), modifier = Modifier.padding(24.dp)) }
+            if (loading && videos.isEmpty() && shorts.isEmpty() && lists.isEmpty()) items(3) { SkeletonCard() }
+            // Videolar
+            items(videos, key = { "v" + it.id }) { v ->
+                val vv = v.copy(channel = v.channel.ifEmpty { ref.name }, channelId = v.channelId.ifEmpty { ref.id }, channelAvatar = v.channelAvatar ?: ref.avatar)
+                VideoCard(vv.copy(channel = ""), onClick = { vm.open(vv, videos) }, onMore = { vm.menu.value = vv })
+            }
+            // Shorts: 3'lü dikey ızgara
+            items(shorts.chunked(3), key = { "s" + it.first().id }) { row ->
+                Row(Modifier.fillMaxWidth().padding(bottom = 2.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    row.forEach { v ->
+                        val vv = v.copy(channel = ref.name, channelId = ref.id, channelAvatar = ref.avatar)
+                        Box(Modifier.weight(1f).aspectRatio(9f / 16f).background(C.chip).clickable { vm.open(vv, shorts.map { it.copy(channel = ref.name, channelId = ref.id, channelAvatar = ref.avatar) }) }) {
+                            AsyncImage("https://i.ytimg.com/vi/${v.id}/oardefault.jpg", null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
+                                error = coil3.compose.rememberAsyncImagePainter("https://i.ytimg.com/vi/${v.id}/hqdefault.jpg"))
+                            Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(56.dp).background(
+                                androidx.compose.ui.graphics.Brush.verticalGradient(listOf(androidx.compose.ui.graphics.Color.Transparent, androidx.compose.ui.graphics.Color(0xB3000000)))))
+                            Text(v.viewsText ?: "", color = androidx.compose.ui.graphics.Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium,
+                                maxLines = 1, modifier = Modifier.align(Alignment.BottomStart).padding(8.dp))
+                            IconButton(onClick = { vm.menu.value = vv }, modifier = Modifier.align(Alignment.TopEnd).size(36.dp)) {
+                                Icon(Icons.Filled.MoreHoriz, "Diğer", tint = androidx.compose.ui.graphics.Color.White, modifier = Modifier.size(20.dp))
+                            }
+                        }
+                    }
+                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
+            // Oynatma listeleri
+            items(lists, key = { "p" + it.id }) { p -> PlaylistRow(p) { vm.push(Screen.Playlist(p.id, p.title)) } }
+            if (loading && (videos.isNotEmpty() || shorts.isNotEmpty() || lists.isNotEmpty())) item { Loader() }
+            if (!loading && h != null && tabs.isNotEmpty() && videos.isEmpty() && shorts.isEmpty() && lists.isEmpty()) item {
+                Text("Burada bir şey yok.", style = T.body.copy(color = C.text2), modifier = Modifier.padding(24.dp))
+            }
         }
     }
 }

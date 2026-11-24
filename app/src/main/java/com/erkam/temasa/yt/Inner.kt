@@ -176,6 +176,7 @@ object Inner {
         "reelShelfRenderer", "reelItemRenderer", "shortsLockupViewModel", "adSlotRenderer",
         "promotedSparklesWebRenderer", "statementBannerRenderer", "brandVideoShelfRenderer",
         "brandVideoSingletonRenderer", "promotedVideoRenderer", "inFeedAdLayoutRenderer",
+        "chipViewModel", "chipCloudChipRenderer", "chipCloudRenderer", "feedFilterChipBarRenderer", "sortFilterSubMenuRenderer",
     )
 
     fun parse(root: JSONObject): Feed {
@@ -183,6 +184,7 @@ object Inner {
         val channels = LinkedHashMap<String, ChannelRef>()
         val playlists = LinkedHashMap<String, PlaylistRef>()
         var next: String? = null
+        var bestLen = 0
 
         fun visit(o: Any?) {
             when (o) {
@@ -206,14 +208,24 @@ object Inner {
                                     }
                                 }
                                 "channelRenderer", "gridChannelRenderer" -> channel(v)?.let { channels.putIfAbsent(it.id, it) }
-                                "continuationCommand" -> v.optString("token").takeIf { it.isNotEmpty() }?.let { next = it }
+                                // "Devamı" anahtarı aşağıda, listenin son öğesi olarak alınır
+                                "continuationItemRenderer" -> Unit
                                 "nextContinuationData" -> v.optString("continuation").takeIf { it.isNotEmpty() }?.let { next = it }
                                 else -> visit(v)
                             }
                         } else if (v is JSONArray) visit(v)
                     }
                 }
-                is JSONArray -> for (i in 0 until o.length()) visit(o.opt(i))
+                is JSONArray -> {
+                    // Asıl devam anahtarı: içerik listesinin son öğesi (en uzun liste kazanır)
+                    val n = o.length()
+                    if (n > 1) o.optJSONObject(n - 1)?.optJSONObject("continuationItemRenderer")?.let { ci ->
+                        var tok: String? = null
+                        walk(ci) { kk, vv -> if (tok == null && kk == "token" && vv is String && vv.isNotEmpty()) tok = vv }
+                        if (tok != null && n > bestLen) { next = tok; bestLen = n }
+                    }
+                    for (i in 0 until n) visit(o.opt(i))
+                }
             }
         }
         visit(root)
@@ -338,6 +350,115 @@ object Inner {
         val subs = text(v.optJSONObject("videoCountText"))?.takeIf { it.contains("abone") }
             ?: text(v.optJSONObject("subscriberCountText"))
         return ChannelRef(id, text(v.optJSONObject("title")) ?: "", thumb(v.optJSONObject("thumbnail")), subs)
+    }
+}
+
+// ---------------- Kanal sayfası ----------------
+
+data class ChannelHead(
+    val id: String,
+    val title: String,
+    val verified: Boolean,
+    val avatar: String?,
+    val banner: String?,
+    val handle: String?,
+    val subs: String?,
+    val videoCount: String?,
+    val description: String,
+    val tabs: List<Pair<String, String>>, // (başlık, params)
+)
+
+data class ChannelFeed(
+    val videos: List<Video>,
+    val shorts: List<Video>,
+    val playlists: List<PlaylistRef>,
+    val next: String?,
+    val sorts: List<Pair<String, String>>, // (ad, devam anahtarı)
+)
+
+object Channels {
+    private fun img(o: JSONObject?): String? {
+        val a = o?.optJSONArray("sources") ?: o?.optJSONArray("thumbnails") ?: return null
+        var best: JSONObject? = null
+        for (i in 0 until a.length()) { val x = a.optJSONObject(i) ?: continue; if (best == null || x.optInt("width") > best.optInt("width")) best = x }
+        return best?.optString("url")?.let { if (it.startsWith("//")) "https:$it" else it }
+    }
+
+    /** UC... kimliği ya da @kullanıcı bağlantısı */
+    fun resolve(idOrUrl: String): String {
+        if (idOrUrl.startsWith("UC") && !idOrUrl.contains("/")) return idOrUrl
+        Regex("/channel/(UC[A-Za-z0-9_-]+)").find(idOrUrl)?.let { return it.groupValues[1] }
+        val url = if (idOrUrl.startsWith("http")) idOrUrl else "https://www.youtube.com/$idOrUrl"
+        val o = Inner.post("navigation/resolve_url", JSONObject().put("url", url))
+        var id: String? = null
+        Inner.walk(o) { k, v -> if (id == null && k == "browseId" && v is String && v.startsWith("UC")) id = v }
+        return id ?: throw IllegalStateException("Kanal bulunamadı")
+    }
+
+    fun head(idOrUrl: String): ChannelHead {
+        val id = resolve(idOrUrl)
+        val o = Inner.post("browse", JSONObject().put("browseId", id))
+        val ph = o.optJSONObject("header")?.optJSONObject("pageHeaderRenderer")?.optJSONObject("content")?.optJSONObject("pageHeaderViewModel")
+        val c4 = o.optJSONObject("header")?.optJSONObject("c4TabbedHeaderRenderer")
+        val title = ph?.optJSONObject("title")?.optJSONObject("dynamicTextViewModel")?.optJSONObject("text")?.optString("content")
+            ?: o.optJSONObject("header")?.optJSONObject("pageHeaderRenderer")?.optString("pageTitle")
+            ?: Inner.text(c4?.optJSONObject("title")) ?: ""
+        val verified = ph?.optJSONObject("title")?.toString()?.contains("CHECK_CIRCLE") == true
+        val avatar = img(ph?.optJSONObject("image")?.optJSONObject("decoratedAvatarViewModel")?.optJSONObject("avatar")?.optJSONObject("avatarViewModel")?.optJSONObject("image"))
+            ?: img(c4?.optJSONObject("avatar"))
+        val banner = img(ph?.optJSONObject("banner")?.optJSONObject("imageBannerViewModel")?.optJSONObject("image"))
+            ?: img(c4?.optJSONObject("banner"))
+        val parts = mutableListOf<String>()
+        ph?.optJSONObject("metadata")?.optJSONObject("contentMetadataViewModel")?.optJSONArray("metadataRows")?.let { rows ->
+            for (i in 0 until rows.length()) {
+                val ps = rows.optJSONObject(i)?.optJSONArray("metadataParts") ?: continue
+                for (j in 0 until ps.length()) ps.optJSONObject(j)?.optJSONObject("text")?.optString("content")?.takeIf { it.isNotBlank() }?.let { parts += it }
+            }
+        }
+        val desc = ph?.optJSONObject("description")?.optJSONObject("descriptionPreviewViewModel")?.optJSONObject("description")?.optString("content") ?: ""
+        val tabs = mutableListOf<Pair<String, String>>()
+        o.optJSONObject("contents")?.optJSONObject("twoColumnBrowseResultsRenderer")?.optJSONArray("tabs")?.let { ts ->
+            for (i in 0 until ts.length()) {
+                val t = ts.optJSONObject(i)?.optJSONObject("tabRenderer") ?: continue
+                val params = t.optJSONObject("endpoint")?.optJSONObject("browseEndpoint")?.optString("params") ?: continue
+                tabs += t.optString("title") to params
+            }
+        }
+        return ChannelHead(
+            id, title, verified, avatar, banner,
+            handle = parts.firstOrNull { it.startsWith("@") },
+            subs = parts.firstOrNull { it.contains("abone") },
+            videoCount = parts.firstOrNull { it.contains("video") },
+            description = desc.trim(),
+            tabs = tabs,
+        )
+    }
+
+    fun tab(id: String, params: String): ChannelFeed = feed(Inner.post("browse", JSONObject().put("browseId", id).put("params", params)))
+
+    fun more(token: String): ChannelFeed = feed(Inner.post("browse", JSONObject().put("continuation", token)))
+
+    private fun feed(o: JSONObject): ChannelFeed {
+        val f = Inner.parse(o)
+        val shorts = LinkedHashMap<String, Video>()
+        val sorts = mutableListOf<Pair<String, String>>()
+        Inner.walk(o) { k, v ->
+            if (k == "shortsLockupViewModel" && v is JSONObject) {
+                var id: String? = null
+                Inner.walk(v.optJSONObject("onTap")) { kk, vv -> if (id == null && kk == "videoId" && vv is String) id = vv }
+                val om = v.optJSONObject("overlayMetadata")
+                id?.let { i ->
+                    shorts.putIfAbsent(i, Video(i, om?.optJSONObject("primaryText")?.optString("content") ?: "",
+                        viewsText = om?.optJSONObject("secondaryText")?.optString("content")))
+                }
+            }
+            if (k == "chipViewModel" && v is JSONObject) {
+                var tok: String? = null
+                Inner.walk(v) { kk, vv -> if (tok == null && kk == "token" && vv is String) tok = vv }
+                tok?.let { sorts += v.optString("text") to it }
+            }
+        }
+        return ChannelFeed(f.videos, shorts.values.toList(), f.playlists, f.next, sorts)
     }
 }
 

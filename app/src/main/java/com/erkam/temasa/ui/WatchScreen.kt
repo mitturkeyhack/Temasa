@@ -124,7 +124,7 @@ fun WatchScreen(vm: MainViewModel, onMinimize: () -> Unit) {
         Box(Modifier.fillMaxWidth().background(Color.Black).statusBarsPadding()) {
             PlayerBox(
                 vm, fullscreen = false,
-                modifier = Modifier.fillMaxWidth().aspectRatio(aspect.coerceIn(1f, 2.4f)),
+                modifier = Modifier.fillMaxWidth().aspectRatio(aspect.coerceIn(0.75f, 2.4f)),
                 onMinimize = onMinimize,
                 onSettings = { showSettings = true },
             )
