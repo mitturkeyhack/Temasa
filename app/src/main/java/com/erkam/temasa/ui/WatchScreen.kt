@@ -69,7 +69,6 @@ import com.erkam.temasa.data.Fmt
 import com.erkam.temasa.data.Store
 import com.erkam.temasa.data.Video
 import com.erkam.temasa.play.Player
-import com.erkam.temasa.yt.Comment
 import com.erkam.temasa.yt.Extras
 import com.erkam.temasa.yt.Yt
 import kotlinx.coroutines.launch
@@ -98,18 +97,21 @@ fun WatchScreen(vm: MainViewModel, onMinimize: () -> Unit) {
     var subscribed by remember { mutableStateOf<Boolean?>(null) }
     var dislikes by remember { mutableLongStateOf(-1L) }
     var likes by remember { mutableLongStateOf(-1L) }
-    var firstComment by remember { mutableStateOf<Comment?>(null) }
-    var commentCount by remember { mutableStateOf(-1) }
+    var comments by remember { mutableStateOf<com.erkam.temasa.yt.CommentPage?>(null) }
+    var commentsFailed by remember { mutableStateOf(false) }
 
     val v = video ?: return
     BackHandler { onMinimize() }
 
     LaunchedEffect(v.id) {
         like = if (Store.liked.value.any { it.id == v.id }) "LIKE" else "INDIFFERENT"
-        subscribed = null; dislikes = -1; likes = -1; firstComment = null; commentCount = -1
+        subscribed = null; dislikes = -1; likes = -1; comments = null; commentsFailed = false
         launch { Account.state(v.id)?.let { s -> s.likeStatus?.let { like = it }; s.subscribed?.let { subscribed = it } } }
         if (settings.dislikes) launch { Extras.votes(v.id)?.let { dislikes = it.dislikes; if (likes < 0) likes = it.likes } }
-        launch { runCatching { Yt.comments(v.id) }.onSuccess { (p, c) -> firstComment = p.items.firstOrNull(); commentCount = c } }
+        launch {
+            runCatching { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.erkam.temasa.yt.Comments.first(v.id) } }
+                .onSuccess { comments = it }.onFailure { commentsFailed = true }
+        }
     }
     LaunchedEffect(info) { info?.likeCount?.takeIf { it >= 0 }?.let { likes = it } }
 
@@ -237,16 +239,20 @@ fun WatchScreen(vm: MainViewModel, onMinimize: () -> Unit) {
                 ) {
                     Row {
                         Text("Yorumlar", style = T.body.copy(fontWeight = FontWeight.SemiBold))
-                        if (commentCount > 0) Text("  ${Fmt.count(commentCount.toLong())}", style = T.body.copy(color = C.text2))
+                        comments?.count?.let { Text("  " + it.replace(" Yorum", "").replace(" yorum", ""), style = T.body.copy(color = C.text2)) }
                     }
                     Spacer(Modifier.height(8.dp))
-                    firstComment?.let { c ->
+                    val first = comments?.items?.firstOrNull()
+                    if (first != null) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Avatar(c.avatar, c.author.removePrefix("@"), 24.dp)
+                            Avatar(first.avatar, first.author.removePrefix("@").ifEmpty { "?" }, 24.dp)
                             Spacer(Modifier.width(8.dp))
-                            Text(c.text, style = T.small.copy(color = C.text), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text(first.text, style = T.small.copy(color = C.text), maxLines = 2, overflow = TextOverflow.Ellipsis)
                         }
-                    } ?: Text(if (commentCount == 0) "Henüz yorum yok" else "Yorumları görmek için dokun", style = T.small)
+                    } else Text(
+                        when { commentsFailed -> "Yorumları görmek için dokun"; comments == null -> "Yükleniyor..."; else -> "Yorum ekleyin..." },
+                        style = T.small
+                    )
                 }
             }
             if (queue.isNotEmpty()) {
@@ -272,7 +278,7 @@ fun WatchScreen(vm: MainViewModel, onMinimize: () -> Unit) {
 
     if (showSettings) PlayerSettingsSheet { showSettings = false }
     if (showDesc) DescriptionSheet(likes) { showDesc = false }
-    if (showComments) CommentsSheet(v.id) { showComments = false }
+    if (showComments) CommentsSheet(vm, v.id, comments) { showComments = false }
 }
 
 @Composable

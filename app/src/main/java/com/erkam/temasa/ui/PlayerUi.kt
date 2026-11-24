@@ -197,32 +197,12 @@ fun PlayerBox(
                 }
                 .pointerInput(fullscreen) {
                     if (fullscreen) {
-                        // Solda parlaklık, sağda ses
-                        var left = true
-                        var acc = 0f
-                        val act = ctx as? Activity
-                        val am = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                        // Tam ekranda aşağı kaydır: tam ekrandan çık ve küçük oynatıcıya geç
+                        var total = 0f
                         detectVerticalDragGestures(
-                            onDragStart = { o -> left = o.x < width / 2; acc = 0f },
-                            onVerticalDrag = { ch, dy ->
-                                ch.consume()
-                                acc += -dy / heightPx
-                                if (left) {
-                                    val lp = act?.window?.attributes ?: return@detectVerticalDragGestures
-                                    val cur = if (lp.screenBrightness < 0) 0.5f else lp.screenBrightness
-                                    val nv = (cur + (-dy / heightPx)).coerceIn(0.01f, 1f)
-                                    lp.screenBrightness = nv; act.window.attributes = lp
-                                    gestureInfo = true to nv
-                                } else {
-                                    val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-                                    if (abs(acc) * max >= 1f) {
-                                        val step = if (acc > 0) 1 else -1
-                                        am.setStreamVolume(AudioManager.STREAM_MUSIC, (am.getStreamVolume(AudioManager.STREAM_MUSIC) + step).coerceIn(0, max), 0)
-                                        acc = 0f
-                                    }
-                                    gestureInfo = false to am.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() / max
-                                }
-                            }
+                            onDragStart = { total = 0f },
+                            onDragEnd = { if (total > 120) { vm.exitFullscreen(); vm.expanded.value = false } },
+                            onVerticalDrag = { ch, dy -> ch.consume(); total += dy }
                         )
                     } else {
                         // Aşağı kaydır = küçült, yukarı kaydır = tam ekran

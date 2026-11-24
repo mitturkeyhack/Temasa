@@ -340,3 +340,156 @@ object Inner {
         return ChannelRef(id, text(v.optJSONObject("title")) ?: "", thumb(v.optJSONObject("thumbnail")), subs)
     }
 }
+
+// ---------------- Yorumlar (YouTube'un kendi yorum sistemi) ----------------
+
+data class YtComment(
+    val id: String,
+    val author: String,
+    val authorId: String,
+    val avatar: String?,
+    val text: String,
+    val ago: String,
+    val likes: String,
+    val replyCount: Int,
+    val hearted: Boolean,
+    val pinned: Boolean,
+    val creator: Boolean,
+    val mine: Boolean,
+    var likeState: String,          // LIKE, DISLIKE, INDIFFERENT
+    val likeAction: String?,
+    val unlikeAction: String?,
+    val dislikeAction: String?,
+    val undislikeAction: String?,
+    val replyParams: String?,
+    val repliesToken: String?,
+    val isReply: Boolean,
+)
+
+data class CommentPage(
+    val items: List<YtComment>,
+    val next: String?,
+    val count: String? = null,
+    val createParams: String? = null,
+    val sorts: List<Pair<String, String>> = emptyList(), // (ad, token)
+)
+
+object Comments {
+    private fun find(o: Any?, key: String): Any? {
+        var r: Any? = null
+        Inner.walk(o) { k, v -> if (r == null && k == key) r = v }
+        return r
+    }
+
+    private fun findString(o: Any?, key: String): String? = (find(o, key) as? String)?.takeIf { it.isNotEmpty() }
+
+    /** İlk sayfa: video sayfasından yorum bölümünün anahtarını al, sonra yorumları çek */
+    fun first(videoId: String): CommentPage {
+        val next = Inner.post("next", JSONObject().put("videoId", videoId))
+        var token: String? = null
+        Inner.walk(next) { k, v ->
+            if (token == null && k == "itemSectionRenderer" && v is JSONObject && v.optString("sectionIdentifier") == "comment-item-section") {
+                token = findString(v, "token")
+            }
+        }
+        val t = token ?: return CommentPage(emptyList(), null)
+        return page(t)
+    }
+
+    /** Devam sayfası, sıralama ya da yanıtlar */
+    fun page(token: String): CommentPage = parse(Inner.post("next", JSONObject().put("continuation", token)))
+
+    fun create(params: String, text: String) =
+        Inner.post("comment/create_comment", JSONObject().put("createCommentParams", params).put("commentText", text))
+
+    fun reply(params: String, text: String) =
+        Inner.post("comment/create_comment_reply", JSONObject().put("createReplyParams", params).put("commentText", text))
+
+    fun action(action: String) =
+        Inner.post("comment/perform_comment_action", JSONObject().put("actions", JSONArray().put(action)))
+
+    fun parse(root: JSONObject): CommentPage {
+        // Yorum içerikleri ayrı bir "varlık" listesinde gelir: anahtar → içerik
+        val entities = HashMap<String, JSONObject>()
+        root.optJSONObject("frameworkUpdates")?.optJSONObject("entityBatchUpdate")?.optJSONArray("mutations")?.let { m ->
+            for (i in 0 until m.length()) {
+                val mu = m.optJSONObject(i) ?: continue
+                val p = mu.optJSONObject("payload") ?: continue
+                val k = p.keys().asSequence().firstOrNull() ?: continue
+                entities[mu.optString("entityKey")] = p.getJSONObject(k)
+            }
+        }
+        val items = mutableListOf<YtComment>()
+        var next: String? = null
+        var count: String? = null
+        var create: String? = null
+        val sorts = mutableListOf<Pair<String, String>>()
+
+        val lists = mutableListOf<JSONArray>()
+        Inner.walk(root) { k, v -> if (k == "continuationItems" && v is JSONArray) lists += v }
+        for (list in lists) for (i in 0 until list.length()) {
+            val it = list.optJSONObject(i) ?: continue
+            it.optJSONObject("commentsHeaderRenderer")?.let { h ->
+                count = Inner.text(h.optJSONObject("countText"))
+                create = findString(h, "createCommentParams")
+                h.optJSONObject("sortMenu")?.let { sm ->
+                    Inner.walk(sm) { k, v ->
+                        if (k == "subMenuItems" && v is JSONArray) for (j in 0 until v.length()) {
+                            val s = v.optJSONObject(j) ?: continue
+                            val tok = findString(s, "token") ?: continue
+                            sorts += s.optString("title") to tok
+                        }
+                    }
+                }
+            }
+            it.optJSONObject("commentThreadRenderer")?.let { th ->
+                val vm = th.optJSONObject("commentViewModel")?.optJSONObject("commentViewModel") ?: th.optJSONObject("commentViewModel")
+                val rt = th.optJSONObject("replies")?.let { findString(it, "token") }
+                vm?.let { comment(it, entities, rt, false) }?.let { c -> items += c }
+            }
+            it.optJSONObject("commentViewModel")?.let { cv ->
+                comment(cv, entities, null, true)?.let { c -> items += c }
+            }
+            it.optJSONObject("continuationItemRenderer")?.let { ci -> findString(ci, "token")?.let { tok -> next = tok } }
+        }
+        return CommentPage(items, next, count, create, sorts)
+    }
+
+    private fun comment(vm: JSONObject, ent: Map<String, JSONObject>, repliesToken: String?, isReply: Boolean): YtComment? {
+        val e = ent[vm.optString("commentKey")] ?: return null
+        val props = e.optJSONObject("properties") ?: return null
+        val author = e.optJSONObject("author")
+        val tb = e.optJSONObject("toolbar")
+        val state = ent[vm.optString("toolbarStateKey")]
+        val surface = ent[vm.optString("toolbarSurfaceKey")]
+        fun act(name: String) = surface?.optJSONObject(name)?.let { findString(it, "action") }
+        val likeState = when (state?.optString("likeState")) {
+            "TOOLBAR_LIKE_STATE_LIKED" -> "LIKE"
+            "TOOLBAR_LIKE_STATE_DISLIKED" -> "DISLIKE"
+            else -> "INDIFFERENT"
+        }
+        val pinned = vm.optJSONObject("pinnedText") != null || props.has("pinnedText") || vm.toString().contains("\"pinnedText\"")
+        return YtComment(
+            id = props.optString("commentId"),
+            author = author?.optString("displayName") ?: "",
+            authorId = author?.optString("channelId") ?: "",
+            avatar = author?.optString("avatarThumbnailUrl")?.ifEmpty { null },
+            text = props.optJSONObject("content")?.optString("content") ?: "",
+            ago = props.optString("publishedTime"),
+            likes = tb?.optString(if (likeState == "LIKE") "likeCountLiked" else "likeCountNotliked")?.trim() ?: "",
+            replyCount = tb?.optString("replyCount")?.filter { it.isDigit() }?.toIntOrNull() ?: 0,
+            hearted = state?.optString("heartState") == "TOOLBAR_HEART_STATE_HEARTED",
+            pinned = pinned,
+            creator = author?.optBoolean("isCreator") == true,
+            mine = author?.optBoolean("isCurrentUser") == true,
+            likeState = likeState,
+            likeAction = act("likeCommand"),
+            unlikeAction = act("unlikeCommand"),
+            dislikeAction = act("dislikeCommand"),
+            undislikeAction = act("undislikeCommand"),
+            replyParams = surface?.optJSONObject("replyCommand")?.let { findString(it, "createReplyParams") },
+            repliesToken = repliesToken,
+            isReply = isReply || props.optInt("replyLevel") > 0,
+        )
+    }
+}
