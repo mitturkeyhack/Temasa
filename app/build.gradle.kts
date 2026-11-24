@@ -17,6 +17,8 @@ android {
         val patch = (System.getenv("APP_PATCH") ?: System.getenv("GITHUB_RUN_NUMBER") ?: "0").toInt()
         versionCode = patch + 1
         versionName = "1.0.$patch"
+        // EVREN anahtarı GitHub'daki gizli değişkenden gelir; kodda yer almaz
+        buildConfigField("String", "EVREN_KEY", "\"${(System.getenv("EVREN_KEY") ?: "").trim()}\"")
     }
 
     signingConfigs {
@@ -46,7 +48,7 @@ android {
         isCoreLibraryDesugaringEnabled = true
     }
 
-    buildFeatures { compose = true }
+    buildFeatures { compose = true; buildConfig = true }
 
     packaging {
         resources {

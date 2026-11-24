@@ -41,7 +41,9 @@ object Evren {
         durum.value = if (anahtar().isBlank()) Durum.ANAHTAR_YOK else Durum.HAZIR
     }
 
-    fun anahtar(): String = prefs.getString("anahtar", "").orEmpty()
+    /** Uygulamaya gömülü anahtar (varsa hiçbir yerde anahtar sorulmaz) */
+    val gomulu: Boolean get() = com.erkam.temasa.BuildConfig.EVREN_KEY.isNotBlank()
+    fun anahtar(): String = prefs.getString("anahtar", "").orEmpty().ifBlank { com.erkam.temasa.BuildConfig.EVREN_KEY }
     fun anahtarSonu(): String = anahtar().takeLast(4)
     private fun adres() = (prefs.getString("adres", VARSAYILAN_ADRES) ?: VARSAYILAN_ADRES).trimEnd('/')
     val hazir get() = anahtar().isNotBlank()
@@ -80,10 +82,10 @@ object Evren {
     private fun hataCevir(kod: Int, g: String) = EvrenHatasi(
         when {
             kod == 401 || (kod == 403 && !g.contains("terms")) -> "EVREN anahtarı kabul edilmedi. Anahtarı kontrol et."
-            kod == 402 || g.contains("credit", true) || g.contains("kredi", true) || g.contains("balance", true) -> "EVREN kredin bitmiş olabilir."
-            kod == 429 -> "EVREN şu an yoğun ya da kullanım sınırına gelindi."
-            kod >= 500 -> "EVREN şu an cevap vermiyor."
-            else -> "EVREN'den beklenmedik cevap ($kod)."
+            kod == 402 || g.contains("credit", true) || g.contains("kredi", true) || g.contains("balance", true) -> "Yapay zekâ kullanım hakkı bitmiş olabilir."
+            kod == 429 -> "Yapay zekâ şu an yoğun ya da kullanım sınırına gelindi."
+            kod >= 500 -> "Yapay zekâ şu an cevap vermiyor."
+            else -> "Yapay zekâdan beklenmedik cevap ($kod)."
         }
     )
 
@@ -104,7 +106,7 @@ object Evren {
             if (!prefs.getBoolean("sartlar", false)) sartlariKabulEt()
         }
         r.onSuccess { durum.value = Durum.HAZIR; hata.value = null }
-        r.onFailure { e -> durum.value = Durum.HATA; hata.value = (e as? EvrenHatasi)?.kullaniciya ?: "EVREN'e ulaşılamadı. İnternetini kontrol et." }
+        r.onFailure { e -> durum.value = Durum.HATA; hata.value = (e as? EvrenHatasi)?.kullaniciya ?: "Yapay zekâya ulaşılamadı. İnternetini kontrol et." }
         r.isSuccess
     }
 

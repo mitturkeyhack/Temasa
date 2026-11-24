@@ -253,7 +253,16 @@ fun FiltrePaneli(vm: MainViewModel) {
 
             LazyColumn(state = list, modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 // EVREN anahtarı yoksa
-                if (durum == Evren.Durum.ANAHTAR_YOK || durum == Evren.Durum.HATA) item {
+                if (Evren.gomulu && durum == Evren.Durum.HATA) item {
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Color(0xFF3A2420)).padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(evrenHata ?: "Yapay zekâya ulaşılamadı", color = Color(0xFFFFCCBC), fontSize = 13.sp, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { scope.launch { Evren.baglan() } }) { Text("Tekrar dene", color = Turkuaz) }
+                    }
+                }
+                if (!Evren.gomulu && (durum == Evren.Durum.ANAHTAR_YOK || durum == Evren.Durum.HATA)) item {
                     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color(0xFF242424)).padding(14.dp)) {
                         Text(if (durum == Evren.Durum.HATA) (evrenHata ?: "EVREN'e bağlanılamadı") else "EVREN'e bağlan", color = C.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                         Spacer(Modifier.height(4.dp))

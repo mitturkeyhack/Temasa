@@ -643,7 +643,7 @@ fun SettingsScreen(vm: MainViewModel) {
 
                 Head("Filtreleme (yapay zekâ)")
                 MenuRow(null, "Kurallar ve engellenen kanallar", "${com.erkam.temasa.filtre.Filtre.kurallar.value.count { it.acik }} kural") { vm.filtreAcik.value = true }
-                MenuRow(null, "EVREN anahtarı", if (com.erkam.temasa.filtre.Evren.hazir) "••••${com.erkam.temasa.filtre.Evren.anahtarSonu()}" else "Girilmedi") { vm.filtreAcik.value = true }
+                if (!com.erkam.temasa.filtre.Evren.gomulu) MenuRow(null, "EVREN anahtarı", if (com.erkam.temasa.filtre.Evren.hazir) "••••${com.erkam.temasa.filtre.Evren.anahtarSonu()}" else "Girilmedi") { vm.filtreAcik.value = true }
 
                 Head("Video kalitesi")
                 MenuRow(null, "Wi-Fi'de", q(s.qualityWifi)) { dialog = "wifi" }

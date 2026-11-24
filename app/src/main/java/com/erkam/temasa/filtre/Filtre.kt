@@ -203,7 +203,7 @@ Sadece JSON döndür, başka hiçbir şey yazma:
             kurallariAyikla(o)?.let { yeni -> if (yeni != kurallar.value) { kurallar.value = yeni; kurallarDegisti() } }
             sohbet.update { it + Mesaj(false, o.optString("cevap").ifBlank { "Tamam, kuralları güncelledim." }) }
         }
-        ok.onFailure { e -> sohbet.update { it + Mesaj(false, (e as? Evren.EvrenHatasi)?.kullaniciya ?: "EVREN'e ulaşamadım. İnternetini kontrol edip tekrar yaz.") } }
+        ok.onFailure { e -> sohbet.update { it + Mesaj(false, (e as? Evren.EvrenHatasi)?.kullaniciya ?: "Yapay zekâya ulaşamadım. İnternetini kontrol edip tekrar yaz.") } }
         dusunuyor.value = false
         kaydet()
         return ok.isSuccess
@@ -305,7 +305,7 @@ Sadece JSON döndür: {"gizle": [numaralar], "neden": {"numara": "en fazla 5 kel
         }
         if (r.isFailure) {
             // Çalışmıyorsa göster ama uyar
-            calismiyor.value = "Filtreleme şu an çalışmıyor: EVREN'e ulaşılamadı"
+            calismiyor.value = "Filtreleme şu an çalışmıyor: yapay zekâya ulaşılamadı"
             p.forEach { sonuc[it.id] = false }
         } else calismiyor.value = null
 
