@@ -94,26 +94,38 @@ import kotlinx.coroutines.delay
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-/** Videonun çizildiği yüzey. Aynı anda tek bir tane ekranda olur. */
+/**
+ * Videonun çizildiği yüzey. Aynı anda birden çok yüzey ekranda olabilir (geçiş sırasında),
+ * ama videoyu sadece "active" olan alır. texture: küçük/hareketli pencereler için.
+ */
 @OptIn(UnstableApi::class)
 @Composable
-fun VideoSurface(modifier: Modifier = Modifier, zoom: Boolean = false) {
+fun VideoSurface(modifier: Modifier = Modifier, zoom: Boolean = false, active: Boolean = true, texture: Boolean = false) {
     val playing by Player.playing.collectAsState()
     AndroidView(
         factory = { ctx ->
-            PlayerView(ctx).apply {
+            val v = if (texture) LayoutInflater.from(ctx).inflate(com.erkam.temasa.R.layout.player_texture, null) as PlayerView
+            else PlayerView(ctx)
+            v.apply {
                 useController = false
                 setShutterBackgroundColor(android.graphics.Color.BLACK)
                 setKeepContentOnPlayerReset(true)
-                player = Player.exo
                 subtitleView?.setApplyEmbeddedStyles(false)
                 subtitleView?.setFractionalTextSize(0.055f)
             }
         },
         update = { v ->
-            v.keepScreenOn = playing
+            v.keepScreenOn = playing && active
             v.resizeMode = if (zoom) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
-            if (v.player == null) v.player = Player.exo
+            val was = v.tag as? Boolean
+            if (active && (was != true || v.player == null)) {
+                // Videoyu bu yüzeye al (diğer yüzey bıraksa da bırakmasa da)
+                v.player = null
+                v.player = Player.exo
+            } else if (!active && was != false) {
+                v.player = null
+            }
+            v.tag = active
         },
         onRelease = { it.player = null },
         modifier = modifier.background(Color.Black),
@@ -126,6 +138,7 @@ fun PlayerBox(
     vm: MainViewModel,
     fullscreen: Boolean,
     modifier: Modifier = Modifier,
+    active: Boolean = true,
     onMinimize: () -> Unit,
     onSettings: () -> Unit,
 ) {
@@ -168,7 +181,7 @@ fun PlayerBox(
     BoxWithConstraints(modifier.background(Color.Black)) {
         val width = constraints.maxWidth.toFloat()
         val heightPx = constraints.maxHeight.toFloat()
-        VideoSurface(Modifier.fillMaxSize(), zoom = zoom && fullscreen)
+        VideoSurface(Modifier.fillMaxSize(), zoom = zoom && fullscreen, active = active)
 
         // Dokunma: tek = kontroller, çift = 10 sn, basılı tut = 2x
         Box(

@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -99,7 +101,7 @@ fun TemasaApp(vm: MainViewModel) {
         LaunchedEffect(video) { if (video == null) { vm.expanded.value = false; vm.fullscreen.value = false } }
 
         if (inPip) {
-            Box(Modifier.fillMaxSize().background(Color.Black)) { VideoSurface(Modifier.fillMaxSize()) }
+            Box(Modifier.fillMaxSize().background(Color.Black)) { VideoSurface(Modifier.fillMaxSize(), active = true) }
             return@TemasaTheme
         }
         if (video != null && (fullscreen || (expanded && landscape))) {
@@ -133,8 +135,11 @@ fun TemasaApp(vm: MainViewModel) {
                         }
                     }
                 }
-                if (video != null && !expanded) MiniPlayer(vm)
                 BottomNav(vm, tab)
+            }
+            if (video != null && !expanded) {
+                val navInset = androidx.compose.foundation.layout.WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+                MiniPlayer(vm, bottom = 57.dp + navInset)
             }
             AnimatedVisibility(
                 visible = expanded && video != null,

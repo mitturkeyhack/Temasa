@@ -4,6 +4,11 @@ import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -122,8 +127,9 @@ fun WatchScreen(vm: MainViewModel, onMinimize: () -> Unit) {
 
     Column(Modifier.fillMaxSize().background(C.bg)) {
         Box(Modifier.fillMaxWidth().background(Color.Black).statusBarsPadding()) {
+            val expanded by vm.expanded.collectAsState()
             PlayerBox(
-                vm, fullscreen = false,
+                vm, fullscreen = false, active = expanded,
                 modifier = Modifier.fillMaxWidth().aspectRatio(aspect.coerceIn(0.75f, 2.4f)),
                 onMinimize = onMinimize,
                 onSettings = { showSettings = true },
@@ -311,34 +317,99 @@ fun FullscreenPlayer(vm: MainViewModel) {
     if (showSettings) PlayerSettingsSheet { showSettings = false }
 }
 
-/** Alt menünün üstündeki küçük oynatıcı */
+/** YouTube'daki gibi yüzen küçük oynatıcı: sağ altta, sürüklenebilir, aşağı atınca kapanır */
 @Composable
-fun MiniPlayer(vm: MainViewModel) {
+fun MiniPlayer(vm: MainViewModel, bottom: androidx.compose.ui.unit.Dp) {
     val v by Player.video.collectAsState()
     val playing by Player.playing.collectAsState()
-    val pos by Player.position.collectAsState()
-    val dur by Player.duration.collectAsState()
     val loading by Player.loading.collectAsState()
-    val video = v ?: return
-    Box(Modifier.fillMaxWidth().height(60.dp).background(C.surface).clickable { vm.expanded.value = true }) {
-        Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.width(107.dp).height(60.dp).background(Color.Black)) {
-                VideoSurface(Modifier.fillMaxSize())
+    val ended by Player.ended.collectAsState()
+    v ?: return
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val scope = rememberCoroutineScope()
+    var controls by remember { mutableStateOf(true) }
+    var right by remember { mutableStateOf(true) }
+    val dx = remember { androidx.compose.animation.core.Animatable(0f) }
+    val dy = remember { androidx.compose.animation.core.Animatable(0f) }
+    LaunchedEffect(controls, playing) { if (controls && playing) { kotlinx.coroutines.delay(3000); controls = false } }
+
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
+        val margin = 12.dp
+        val w = maxWidth * 0.52f
+        val h = w * 9f / 16f
+        val wPx = with(density) { w.toPx() }
+        val hPx = with(density) { h.toPx() }
+        val mPx = with(density) { margin.toPx() }
+        val fullW = with(density) { maxWidth.toPx() }
+        val fullH = with(density) { maxHeight.toPx() }
+        val bottomPx = with(density) { bottom.toPx() }
+        val baseX = if (right) fullW - wPx - mPx else mPx
+        val baseY = fullH - bottomPx - hPx - mPx
+        Box(
+            Modifier
+                .offset { androidx.compose.ui.unit.IntOffset((baseX + dx.value).toInt(), (baseY + dy.value).toInt()) }
+                .size(w, h)
+                .androidx_shadow()
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color.Black)
+                .pointerInput(right) {
+                    detectDragGestures(
+                        onDrag = { ch, d -> ch.consume(); scope.launch { dx.snapTo(dx.value + d.x); dy.snapTo(dy.value + d.y) } },
+                        onDragEnd = {
+                            scope.launch {
+                                if (dy.value > hPx * 0.6f) {
+                                    // Aşağı atıldı: kapat
+                                    dy.animateTo(fullH, androidx.compose.animation.core.tween(180))
+                                    Player.close()
+                                    dx.snapTo(0f); dy.snapTo(0f)
+                                    return@launch
+                                }
+                                val cx = baseX + dx.value + wPx / 2
+                                val toRight = cx > fullW / 2
+                                val target = (if (toRight) fullW - wPx - mPx else mPx) - baseX
+                                launch { dy.animateTo(0f, androidx.compose.animation.core.spring(0.8f, 400f)) }
+                                dx.animateTo(target, androidx.compose.animation.core.spring(0.8f, 400f))
+                                right = toRight
+                                dx.snapTo(0f)
+                            }
+                        }
+                    )
+                }
+                .pointerInput(controls) {
+                    detectTapGestures(onTap = { if (controls) vm.expanded.value = true else controls = true })
+                }
+        ) {
+            VideoSurface(Modifier.fillMaxSize(), active = true, texture = true)
+            if (controls || !playing) {
+                Box(Modifier.fillMaxSize().background(Color(0x59000000))) {
+                    Box(
+                        Modifier.align(Alignment.TopStart).padding(6.dp).size(36.dp).clip(androidx.compose.foundation.shape.CircleShape)
+                            .background(Color(0x66000000)).clickable { if (ended) Player.toggle() else Player.toggle(); controls = true },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (loading) CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+                        else Icon(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, if (playing) "Duraklat" else "Oynat", tint = Color.White, modifier = Modifier.size(24.dp))
+                    }
+                    Box(
+                        Modifier.align(Alignment.TopEnd).padding(6.dp).size(36.dp).clip(androidx.compose.foundation.shape.CircleShape)
+                            .background(Color(0x66000000)).clickable { Player.close() },
+                        contentAlignment = Alignment.Center
+                    ) { Icon(Icons.Filled.Close, "Kapat", tint = Color.White, modifier = Modifier.size(22.dp)) }
+                }
             }
-            Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                Text(video.title, style = T.body.copy(fontSize = 13.sp, fontWeight = FontWeight.Medium), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(video.channel, style = T.meta, maxLines = 1)
-            }
-            androidx.compose.material3.IconButton(onClick = { Player.toggle() }) {
-                if (loading) CircularProgressIndicator(color = C.text, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
-                else Icon(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, if (playing) "Duraklat" else "Oynat", tint = C.text)
-            }
-            androidx.compose.material3.IconButton(onClick = { Player.close() }) {
-                Icon(Icons.Filled.Close, "Kapat", tint = C.text)
-            }
+            MiniProgress(Modifier.align(Alignment.BottomStart))
         }
-        val f = if (dur > 0) (pos.toFloat() / dur).coerceIn(0f, 1f) else 0f
-        Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(2.dp).background(C.chipHi))
-        Box(Modifier.align(Alignment.BottomStart).fillMaxWidth(f).height(2.dp).background(C.red))
     }
 }
+
+@Composable
+private fun MiniProgress(modifier: Modifier) {
+    val pos by Player.position.collectAsState()
+    val dur by Player.duration.collectAsState()
+    val f = if (dur > 0) (pos.toFloat() / dur).coerceIn(0f, 1f) else 0f
+    Box(modifier.fillMaxWidth().height(3.dp).background(Color(0x4DFFFFFF))) {
+        Box(Modifier.fillMaxWidth(f).height(3.dp).background(C.red))
+    }
+}
+
+private fun Modifier.androidx_shadow(): Modifier = this.then(Modifier.shadow(12.dp, RoundedCornerShape(12.dp)))
