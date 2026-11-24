@@ -31,6 +31,13 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+    companion object { const val PIP_ISLEM = "com.erkam.temasa.PIP_ISLEM" }
+
+    override fun onDestroy() {
+        runCatching { unregisterReceiver(pipAlici) }
+        super.onDestroy()
+    }
+
     private val vm: MainViewModel by viewModels()
     private var controller: ListenableFuture<MediaController>? = null
     private var lastClip: String? = null
@@ -71,6 +78,9 @@ class MainActivity : ComponentActivity() {
                 .collect { updatePip(it) }
         }
         lifecycleScope.launch { Player.videoAspect.collect { updatePip(canPip()) } }
+        // Oynat/durdur simgesi güncel kalsın
+        lifecycleScope.launch { Player.playing.collect { if (Build.VERSION.SDK_INT >= 26 && isInPictureInPictureMode) updatePip(canPip()) } }
+        androidx.core.content.ContextCompat.registerReceiver(this, pipAlici, android.content.IntentFilter(PIP_ISLEM), androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED)
     }
 
     private fun canPip() = Store.settings.value.pip && vm.expanded.value && Player.playing.value && !Player.audioOnly.value
@@ -79,8 +89,44 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT < 26) return null
         val a = Player.videoAspect.value.coerceIn(0.42f, 2.38f)
         val b = PictureInPictureParams.Builder().setAspectRatio(Rational((a * 1000).toInt(), 1000))
+        // YouTube gibi: kulaklık (arka planda dinle), oynat/durdur, sonraki
+        runCatching { b.setActions(pipDugmeleri()) }
         if (Build.VERSION.SDK_INT >= 31) b.setAutoEnterEnabled(auto).setSeamlessResizeEnabled(true)
         return b.build()
+    }
+
+    private fun pipDugme(islem: String, simge: Int, ad: String, kod: Int): android.app.RemoteAction {
+        val i = Intent(PIP_ISLEM).setPackage(packageName).putExtra("islem", islem)
+        val pi = android.app.PendingIntent.getBroadcast(this, kod, i, android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT)
+        return android.app.RemoteAction(android.graphics.drawable.Icon.createWithResource(this, simge), ad, ad, pi)
+    }
+
+    private fun pipDugmeleri(): List<android.app.RemoteAction> = listOf(
+        pipDugme("dinle", R.drawable.ic_pip_dinle, "Arka planda dinle", 1),
+        if (Player.playing.value) pipDugme("durdur", R.drawable.ic_pip_durdur, "Duraklat", 2) else pipDugme("oynat", R.drawable.ic_pip_oynat, "Oynat", 2),
+        pipDugme("sonraki", R.drawable.ic_pip_sonraki, "Sonraki", 3),
+    )
+
+    /** Arka planda dinleme: pencere kapandı, ses sürüyor */
+    private var dinliyor = false
+    private var oncekiSadeceSes = false
+
+    private val pipAlici = object : android.content.BroadcastReceiver() {
+        override fun onReceive(c: android.content.Context, i: Intent) {
+            when (i.getStringExtra("islem")) {
+                "dinle" -> {
+                    dinliyor = true
+                    oncekiSadeceSes = Player.audioOnly.value
+                    Player.setAudioOnly(true)
+                    Player.exo.play()
+                    moveTaskToBack(true)
+                }
+                "durdur" -> Player.exo.pause()
+                "oynat" -> Player.exo.play()
+                "sonraki" -> Player.next()
+            }
+            updatePip(canPip())
+        }
     }
 
     private fun updatePip(auto: Boolean) {
@@ -99,12 +145,14 @@ class MainActivity : ComponentActivity() {
         vm.inPip.value = isInPictureInPictureMode
         // Küçük pencere kapatılınca videoyu durdur
         if (!isInPictureInPictureMode && lifecycle.currentState < androidx.lifecycle.Lifecycle.State.STARTED) {
-            if (!Store.settings.value.background) Player.exo.pause()
+            if (!Store.settings.value.background && !dinliyor) Player.exo.pause()
         }
     }
 
     override fun onStart() {
         super.onStart()
+        // Arka planda dinlemeden dönüldü: görüntü geri gelsin
+        if (dinliyor) { dinliyor = false; if (!oncekiSadeceSes) Player.setAudioOnly(false) }
         // Uygulama her öne geldiğinde (en çok saatte bir) yeni sürüme bak
         com.erkam.temasa.data.Updater.check(this, silent = true)
         // Oynatma hizmetine bağlan (bildirim ve kilit ekranı kontrolleri için)
@@ -114,7 +162,7 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         val pip = Build.VERSION.SDK_INT >= 24 && isInPictureInPictureMode
-        if (!pip && !Store.settings.value.background && !isChangingConfigurations) Player.exo.pause()
+        if (!pip && !Store.settings.value.background && !isChangingConfigurations && !dinliyor) Player.exo.pause()
         Player.savePos()
         controller?.let { MediaController.releaseFuture(it) }
         controller = null

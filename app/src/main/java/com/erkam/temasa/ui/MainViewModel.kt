@@ -184,19 +184,74 @@ class MainViewModel : ViewModel() {
                         Store.setHome(list)
                         list
                     }
-                    q == "#live" -> Yt.kiosk("live")
-                    q == "#podcast" -> Yt.kiosk("trending_podcasts_episodes")
-                    else -> {
-                        val p = Yt.search(q, Yt.Filter.VIDEOS)
-                        homePage = p.next
-                        p.items.filterIsInstance<Video>()
-                    }
+                    else -> kategoriAkis(chips[chip.value].first, ilk = true).also { if (it.isEmpty()) throw IllegalStateException("boş") }
                 }
             }
             r.onSuccess { home.value = it }
             r.onFailure { if (home.value.isEmpty()) homeError.value = "Bağlantı sorunu. Yenilemek için dokun." }
             homeLoading.value = false
         }
+    }
+
+    // ---------- Kategoriler: her yenilemede farklı aramalar ----------
+
+    /** Her kategori için çeşitli aramalar: her yenilemede bunlardan farklı üçü seçilir */
+    private val havuz: Map<String, List<String>> = mapOf(
+        "Müzik" to listOf("yeni çıkan türkçe şarkılar", "türkçe pop şarkılar", "akustik cover türkçe", "türküler", "ilahiler",
+            "türkçe rap yeni", "slow türkçe şarkılar", "arabesk şarkılar", "enstrümantal müzik", "nostaljik türkçe şarkılar",
+            "canlı performans şarkı", "ney sufi müzik", "anadolu rock", "yabancı hit şarkılar"),
+        "Oyun" to listOf("oyun videoları türkçe", "minecraft türkçe", "brawl stars türkçe", "gta 5 türkçe", "valorant türkçe",
+            "yeni çıkan oyunlar inceleme", "mobil oyunlar türkçe", "korku oyunu türkçe", "fc kariyer modu türkçe", "roblox türkçe", "strateji oyunu türkçe"),
+        "Canlı" to listOf("canlı yayın", "canlı haber", "canlı sohbet", "canlı radyo", "canlı müzik yayını", "canlı oyun yayını"),
+        "Podcast" to listOf("podcast türkçe", "podcast sohbet bölüm", "bilim podcast türkçe", "tarih podcast", "girişimcilik podcast",
+            "röportaj podcast türkçe", "dini sohbet podcast", "psikoloji podcast türkçe", "spor podcast türkçe", "teknoloji podcast türkçe", "kitap podcast"),
+        "Haberler" to listOf("son dakika haberleri", "gündem haberleri bugün", "ekonomi haberleri", "dünya haberleri türkçe", "haber bülteni", "spor haberleri bugün"),
+        "Belgesel" to listOf("belgesel türkçe", "tarih belgeseli", "doğa belgeseli türkçe", "uzay belgeseli", "savaş belgeseli", "hayvan belgeseli", "bilim belgeseli", "osmanlı belgeseli"),
+        "Yemek" to listOf("yemek tarifi", "kolay yemek tarifleri", "tatlı tarifi", "ekmek tarifi", "kahvaltılık tarifler", "et yemekleri tarifi", "sokak lezzetleri", "hamur işi tarifi"),
+        "Spor" to listOf("maç özeti", "futbol özet", "basketbol özet", "gol videoları", "spor programı", "voleybol özet", "dövüş sporları"),
+        "Sohbet" to listOf("dini sohbet", "risale-i nur sohbet", "nasihat", "kıssa", "hutbe", "tefsir sohbeti", "siyer sohbeti"),
+        "Bilim" to listOf("bilim videoları türkçe", "uzay", "fizik anlatım", "biyoloji ilginç bilgiler", "teknoloji bilim", "kimya deneyleri", "matematik ilginç"),
+        "Komedi" to listOf("komik videolar", "stand up türkçe", "skeç", "komik anlar", "komedi dizisi sahneleri", "şaka videoları"),
+    )
+    private val kullanilanAramalar = HashMap<String, MutableSet<String>>()
+
+    private suspend fun kategoriAkis(ad: String, ilk: Boolean): List<Video> = kotlinx.coroutines.coroutineScope {
+        val canli = ad == "Canlı"
+        val havuzu = havuz[ad] ?: listOf(chips.firstOrNull { it.first == ad }?.second ?: ad)
+        val kullanilan = kullanilanAramalar.getOrPut(ad) { mutableSetOf() }
+        if (ilk) kullanilan.clear()
+        var secilen = havuzu.filter { it !in kullanilan }.shuffled().take(3)
+        if (secilen.isEmpty()) { kullanilan.clear(); secilen = havuzu.shuffled().take(3) }
+        kullanilan += secilen
+        val izlenen = Store.history.value.take(300).filter { (Store.progress(it.id) ?: 0f) >= 0.85f }.map { it.id }.toSet()
+        val listeler = secilen.map { q ->
+            async { runCatching { Yt.search(q, Yt.Filter.VIDEOS).items.filterIsInstance<Video>() }.getOrDefault(emptyList()) }
+        }.toMutableList()
+        if (canli && ilk) listeler += async { runCatching { Yt.kiosk("live") }.getOrDefault(emptyList()) }
+        val gelen = listeler.awaitAll().map { l ->
+            val uygun = l.filter { Store.onerilebilir(it) && it.id !in izlenen && (canli || !it.live) }
+                .let { x -> if (canli) x.sortedByDescending { it.live } else x }
+            // Her aramanın ilk 15'i karışık, sonrası sırayla: hem alakalı hem farklı
+            (uygun.take(15).shuffled() + uygun.drop(15)).toMutableList()
+        }
+        val karisik = ArrayList<Video>(); val gorulmus = HashSet<String>()
+        home.value.forEach { if (!ilk) gorulmus += it.id }
+        while (gelen.any { it.isNotEmpty() }) gelen.forEach { l ->
+            while (l.isNotEmpty()) { val v = l.removeAt(0); if (gorulmus.add(v.id)) { karisik += v; break } }
+        }
+        if (!ilk) return@coroutineScope karisik
+        val simdi = System.currentTimeMillis()
+        val (eski, yeni) = karisik.partition { it.id in gosterilen }
+        val sonuc = yeni + eski
+        sonuc.take(12).forEach { gosterilen[it.id] = simdi }
+        sonuc
+    }
+
+    /** "İlgilenmiyorum" / "Kanalı önerme" sonrası ekrandan hemen kaldır */
+    fun akistanCikar(id: String? = null, kanal: String? = null) {
+        fun uy(v: Video) = (id == null || v.id != id) && (kanal == null || v.channelId != kanal)
+        home.value = home.value.filter(::uy)
+        subsFeed.value = subsFeed.value.filter { id == null || it.id != id }
     }
 
     // ---------- Ana sayfa: her yenilemede taze karışım ----------
@@ -269,7 +324,7 @@ class MainViewModel : ViewModel() {
                 repeat(if (i == 0 && yt.isNotEmpty()) 2 else 1) {
                     while (l.isNotEmpty()) {
                         val v = l.removeAt(0)
-                        if (v.id !in gorulmus && v.id !in izlenen) { gorulmus += v.id; karisik += v; break }
+                        if (v.id !in gorulmus && v.id !in izlenen && Store.onerilebilir(v)) { gorulmus += v.id; karisik += v; break }
                     }
                 }
             }
@@ -300,11 +355,7 @@ class MainViewModel : ViewModel() {
                         homeNext = f.next
                         f.videos
                     }
-                    page != null && q != null && !q.startsWith("#") -> {
-                        val p = Yt.search(q, Yt.Filter.VIDEOS, page)
-                        homePage = p.next
-                        p.items.filterIsInstance<Video>()
-                    }
+                    q != null -> kategoriAkis(chips.firstOrNull { it.second == q }?.first ?: q, ilk = false)
                     q == null -> {
                         // Sonsuz akış: izlenen son videolara benzerlerden devam
                         val seeds = (home.value.takeLast(15).map { it.id } + Store.history.value.take(20).map { it.id }).shuffled().take(4)
@@ -312,7 +363,7 @@ class MainViewModel : ViewModel() {
                     }
                     else -> emptyList()
                 }
-            }.onSuccess { l -> home.value = (home.value + l).distinctBy { it.id } }
+            }.onSuccess { l -> home.value = (home.value + l.filter { Store.onerilebilir(it) }).distinctBy { it.id } }
         }
     }
 

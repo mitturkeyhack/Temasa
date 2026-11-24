@@ -1,6 +1,7 @@
 package com.erkam.temasa.ui
 
 import android.content.Intent
+import androidx.compose.material.icons.outlined.NotInterested
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.VisibilityOff
@@ -243,6 +244,12 @@ private fun VideoMenu(vm: MainViewModel, v: Video) {
             }
             if (v.channelId.isNotEmpty()) MenuRow(Icons.Outlined.Person, "Kanala git") { dismiss(); vm.push(Screen.Channel(v.channelId, v.channel)) }
             if (Store.history.value.any { it.id == v.id }) MenuRow(Icons.Outlined.Delete, "İzleme geçmişinden kaldır") { dismiss(); Store.removeHistory(v.id) }
+            MenuRow(Icons.Outlined.NotInterested, "İlgilenmiyorum") {
+                dismiss(); Store.ilgilenmiyorum(v.id); vm.akistanCikar(v.id); vm.toast("Bu video artık önerilmeyecek")
+            }
+            if (v.channelId.isNotEmpty()) MenuRow(Icons.Outlined.Block, "Kanalı önerme") {
+                dismiss(); Store.kanaliOnerme(v.channelId); vm.akistanCikar(kanal = v.channelId); vm.toast("${v.channel.ifBlank { "Bu kanal" }} artık önerilmeyecek")
+            }
         }
     }
 }

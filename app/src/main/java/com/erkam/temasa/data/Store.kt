@@ -66,10 +66,35 @@ object Store {
     val profilePhoto = MutableStateFlow<String?>(null)
     val profileHandle = MutableStateFlow<String?>(null)
 
+    /** "İlgilenmiyorum" denen videolar ve "Kanalı önerme" denen kanallar: hiçbir akışta çıkmaz */
+    val ilgisiz = MutableStateFlow<Set<String>>(emptySet())
+    val ilgisizKanal = MutableStateFlow<Set<String>>(emptySet())
+
+    fun ilgilenmiyorum(id: String) {
+        ilgisiz.value = (ilgisiz.value + id).let { if (it.size > 2000) it.drop(it.size - 2000).toSet() else it }
+        prefs.edit().putStringSet("ilgisiz", ilgisiz.value).apply()
+    }
+
+    fun kanaliOnerme(id: String) {
+        if (id.isEmpty()) return
+        ilgisizKanal.value = ilgisizKanal.value + id
+        prefs.edit().putStringSet("ilgisizKanal", ilgisizKanal.value).apply()
+    }
+
+    fun kanalOnerileriniGeriAl(id: String) {
+        ilgisizKanal.value = ilgisizKanal.value - id
+        prefs.edit().putStringSet("ilgisizKanal", ilgisizKanal.value).apply()
+    }
+
+    /** Akışlarda gösterilebilir mi */
+    fun onerilebilir(v: Video) = v.id !in ilgisiz.value && (v.channelId.isEmpty() || v.channelId !in ilgisizKanal.value)
+
     fun init(ctx: Context) {
         dir = ctx.filesDir
         prefs = ctx.getSharedPreferences("ayarlar", Context.MODE_PRIVATE)
         val p = prefs
+        ilgisiz.value = p.getStringSet("ilgisiz", emptySet()).orEmpty().toSet()
+        ilgisizKanal.value = p.getStringSet("ilgisizKanal", emptySet()).orEmpty().toSet()
         _settings.value = Settings(
             qualityWifi = p.getInt("qWifi", 0),
             qualityMobile = p.getInt("qMobile", 480),
