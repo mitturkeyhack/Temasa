@@ -70,6 +70,13 @@ class MainViewModel : ViewModel() {
     init {
         refreshHome()
         viewModelScope.launch { if (Account.signedIn) Account.refreshProfile() }
+        // Çerez değişince (giriş / çıkış) her yer kendini yenilesin
+        viewModelScope.launch {
+            Store.cookie.collect {
+                val now = Account.signedIn
+                if (now != signedIn.value) { signedIn.value = now; refreshHome(); refreshSubs(force = true) }
+            }
+        }
     }
 
     /** Etkinlik: ekranı dikey yap (tam ekrandan çıkış) */

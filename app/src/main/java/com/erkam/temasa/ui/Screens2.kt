@@ -457,13 +457,30 @@ fun LibraryScreen(vm: MainViewModel, id: String, title: String) {
 
 @Composable
 private fun HistoryScreen(vm: MainViewModel) {
-    val history by Store.history.collectAsState()
+    val local by Store.history.collectAsState()
+    val signed by vm.signedIn.collectAsState()
+    var remote by remember { mutableStateOf<List<Video>>(emptyList()) }
+    var token by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val list = rememberLazyListState()
+    // Girişliyse YouTube'daki izleme geçmişi de gelir
+    LaunchedEffect(signed) {
+        if (signed) runCatching { withContext(Dispatchers.IO) { Inner.history() } }.onSuccess { remote = it.videos; token = it.next }
+    }
+    LoadMore(list) {
+        val t = token ?: return@LoadMore
+        if (busy) return@LoadMore
+        busy = true
+        scope.launch { runCatching { withContext(Dispatchers.IO) { Inner.more(t) } }.onSuccess { f -> remote = remote + f.videos; token = f.next }; busy = false }
+    }
+    val history = remember(local, remote) { (local + remote).distinctBy { it.id } }
     var confirm by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize()) {
         BackBar(vm, "Geçmiş") {
             if (history.isNotEmpty()) IconButton(onClick = { confirm = true }) { Icon(Icons.Outlined.Delete, "Geçmişi temizle", tint = C.text) }
         }
-        LazyColumn(Modifier.fillMaxSize()) {
+        LazyColumn(state = list, modifier = Modifier.fillMaxSize()) {
             if (history.isEmpty()) item { Empty(Icons.Outlined.History, "Geçmiş boş", "İzlediğin videolar burada görünür.") }
             items(history, key = { "g" + it.id }) { v -> VideoRow(v, onClick = { vm.open(v) }, onMore = { vm.menu.value = v }) }
         }

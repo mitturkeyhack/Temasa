@@ -16,12 +16,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.lifecycle.lifecycleScope
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
 import com.erkam.temasa.R
 import com.erkam.temasa.data.Store
-import kotlinx.coroutines.launch
 
 /** Google'ın kendi giriş sayfası (YouTube'a devam etmek için). */
 class LoginActivity : ComponentActivity() {
@@ -97,20 +95,38 @@ class LoginActivity : ComponentActivity() {
         )
     }
 
-    private fun check(url: String) {
+    private val poll = object : Runnable {
+        override fun run() {
+            if (done) return
+            check(web.url ?: "", fromPoll = true)
+            web.postDelayed(this, 1000)
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        web.postDelayed(poll, 1000)
+    }
+
+    override fun onPause() {
+        web.removeCallbacks(poll)
+        super.onPause()
+    }
+
+    private fun check(url: String, fromPoll: Boolean = false) {
         if (done) return
-        if (!url.startsWith("https://www.youtube.com") && !url.startsWith("https://m.youtube.com")) return
+        // Google sayfasındayken bekle; YouTube'a dönünce (ya da çerez gelince) giriş tamam
+        if (!fromPoll && !url.contains("youtube.com")) return
+        if (url.contains("accounts.google.com") || url.contains("accounts.youtube.com")) return
         val c = CookieManager.getInstance().getCookie("https://www.youtube.com") ?: return
         if (!c.contains("SAPISID=") && !c.contains("__Secure-3PAPISID=")) return
         done = true
         CookieManager.getInstance().flush()
         Store.setAccount(c)
-        lifecycleScope.launch {
-            Account.refreshProfile()
-            Account.syncSubs()
-            setResult(RESULT_OK)
-            finish()
-        }
+        // Hemen kapan; profil ve abonelikler arka planda gelir
+        Account.afterLogin()
+        setResult(RESULT_OK)
+        finish()
     }
 
 

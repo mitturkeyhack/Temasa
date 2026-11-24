@@ -6,7 +6,10 @@ import com.erkam.temasa.data.Store
 import com.erkam.temasa.data.Video
 import com.erkam.temasa.yt.Inner
 import com.erkam.temasa.yt.VideoState
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** Google hesabı: abone olma, beğenme, Sonra izle YouTube hesabına işlenir. */
@@ -16,6 +19,16 @@ object Account {
     }
 
     val signedIn get() = Inner.signedIn
+
+    private val bg = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /** Girişten hemen sonra: profil ve abonelikleri arka planda al */
+    fun afterLogin() {
+        bg.launch {
+            refreshProfile()
+            syncSubs()
+        }
+    }
 
     suspend fun refreshProfile() = withContext(Dispatchers.IO) {
         if (!signedIn) return@withContext

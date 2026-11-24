@@ -38,11 +38,22 @@ object Inner {
 
     val signedIn get() = sapisid(cookieProvider()) != null
 
+    private fun cookieValue(cookie: String, name: String) = cookie.split(";").map { it.trim() }
+        .firstOrNull { it.startsWith("$name=") }?.substringAfter("=")?.takeIf { it.isNotEmpty() }
+
     private fun sapisid(cookie: String?): String? {
         if (cookie == null) return null
-        fun get(name: String) = cookie.split(";").map { it.trim() }
-            .firstOrNull { it.startsWith("$name=") }?.substringAfter("=")?.takeIf { it.isNotEmpty() }
-        return get("SAPISID") ?: get("__Secure-3PAPISID")
+        return cookieValue(cookie, "SAPISID") ?: cookieValue(cookie, "__Secure-3PAPISID")
+    }
+
+    /** YouTube web'in Authorization başlığı (SAPISIDHASH + 1P + 3P) */
+    private fun authHeader(cookie: String, ts: Long): String? {
+        val parts = mutableListOf<String>()
+        fun add(scheme: String, v: String?) { if (v != null) parts += "$scheme ${ts}_${sha1("$ts $v $ORIGIN")}" }
+        add("SAPISIDHASH", sapisid(cookie))
+        add("SAPISID1PHASH", cookieValue(cookie, "__Secure-1PAPISID"))
+        add("SAPISID3PHASH", cookieValue(cookie, "__Secure-3PAPISID"))
+        return parts.joinToString(" ").ifEmpty { null }
     }
 
     private fun sha1(s: String): String =
@@ -78,11 +89,10 @@ object Inner {
             .header("X-Youtube-Client-Name", "1").header("X-Youtube-Client-Version", clientVersion)
             .header("Accept-Language", "tr-TR,tr;q=0.9")
         val cookie = cookieProvider()
-        val sid = sapisid(cookie)
-        if (auth && cookie != null && sid != null) {
-            val ts = System.currentTimeMillis() / 1000
+        val authValue = cookie?.let { authHeader(it, System.currentTimeMillis() / 1000) }
+        if (auth && cookie != null && authValue != null) {
             b.header("Cookie", cookie)
-                .header("Authorization", "SAPISIDHASH ${ts}_${sha1("$ts $sid $ORIGIN")}")
+                .header("Authorization", authValue)
                 .header("X-Goog-AuthUser", "0")
         }
         Net.client.newCall(b.build()).execute().use { r ->
