@@ -1,8 +1,5 @@
 package com.erkam.temasa.play
 
-import com.erkam.temasa.filtre.Filtre
-import com.erkam.temasa.filtre.SesKontrol
-import com.erkam.temasa.filtre.Takilma
 import android.content.Context
 import android.media.MediaCodecList
 import android.net.ConnectivityManager
@@ -218,7 +215,6 @@ object Player {
         }
         savePos()
         loadJob?.cancel()
-        Filtre.takilma.value = if (Filtre.gizliMi(v.id)) Takilma(v.id, Filtre.nedenler[v.id] ?: "Kurallarına uymuyor") else null
         video.value = v
         info.value = null
         error.value = null
@@ -264,13 +260,8 @@ object Player {
             related.value = Yt.convert(i.relatedItems).filterIsInstance<Video>().filter { it.id != v.id }
 
             if (dl != null) playLocal(full, dl, start ?: 0)
-            else prepare(i, start ?: 0, autoPlay = Filtre.takilma.value?.videoId != v.id)
+            else prepare(i, start ?: 0, autoPlay = true)
 
-            // Filtreleme: ses kuralı açıksa ilk saniyeleri dinle
-            if (Filtre.sesKurali() != null && !Filtre.izinliMi(v.id) && Filtre.takilma.value?.videoId != v.id) launch {
-                val kadin = SesKontrol.kadinSesiMi(i, app.cacheDir)
-                if (kadin == true && video.value?.id == v.id && !Filtre.izinliMi(v.id)) Filtre.sestenTakildi(full)
-            }
 
             if (Store.settings.value.sponsorBlock && i.streamType != StreamType.LIVE_STREAM) {
                 launch { skips.value = Extras.sponsors(v.id) }
@@ -568,7 +559,7 @@ object Player {
     fun hasNext() = (queueIndex.value >= 0 && queueIndex.value < queue.value.size - 1) || related.value.isNotEmpty()
     fun hasPrev() = queueIndex.value > 0
 
-    private fun uygun(x: Video) = !Filtre.gizliMi(x.id) && (x.channelId.isEmpty() || x.channelId !in Filtre.engelliKanallar.value)
+    private fun uygun(x: Video) = true
 
     fun next() {
         val q = queue.value; val i = queueIndex.value

@@ -186,15 +186,11 @@ fun SearchScreen(vm: MainViewModel, initial: String?) {
                 items(suggestions.filter { s -> hist.none { it.equals(s, true) } }, key = { "s$it" }) { s -> SuggestRow(s, false, { submit(s) }, { text = "$s " }, null) }
             }
         } else {
-            val vids = remember(results) { results.filterIsInstance<Video>() }
-            val (gorunen, _) = rememberSuzulmus(vids)
-            val gorunenId = remember(gorunen) { gorunen.map { it.id }.toSet() }
-            val sonuc = remember(results, gorunenId) { results.filter { it !is Video || it.id in gorunenId } }
             LazyColumn(state = list, modifier = Modifier.fillMaxSize()) {
                 item { ChipRow(Yt.Filter.entries.map { it.label }, filter) { filter = it } }
                 if (loading && results.isEmpty()) items(4) { SkeletonCard() }
                 if (!loading && results.isEmpty()) item { Empty(Icons.Outlined.SearchOff, "Sonuç bulunamadı", "Farklı kelimelerle aramayı dene.") }
-                items(sonuc, key = { r -> when (r) { is Video -> "v" + r.id; is ChannelRef -> "c" + r.id; is PlaylistRef -> "p" + r.id; else -> r.hashCode().toString() } }) { r ->
+                items(results, key = { r -> when (r) { is Video -> "v" + r.id; is ChannelRef -> "c" + r.id; is PlaylistRef -> "p" + r.id; else -> r.hashCode().toString() } }) { r ->
                     when (r) {
                         is Video -> VideoCard(r, onClick = { vm.open(r) }, onChannel = {
                             if (r.channelId.isNotEmpty()) vm.push(Screen.Channel(r.channelId, r.channel))
@@ -238,8 +234,6 @@ fun ChannelScreen(vm: MainViewModel, id: String, name: String) {
     val subs by Store.subs.collectAsState()
     val scope = rememberCoroutineScope()
     val list = rememberLazyListState()
-    val (kanalVideo, _) = rememberSuzulmus(remember(videos) { videos.map { it.copy(channelId = it.channelId.ifEmpty { id }) } })
-    val (kanalShort, _) = rememberSuzulmus(remember(shorts) { shorts.map { it.copy(channelId = it.channelId.ifEmpty { id }) } })
 
     // Gösterilecek sekmeler: Ana Sayfa / Gönderiler / Ara gibi olanlar hariç
     val wanted = listOf("Videolar", "Shorts", "Canlı", "Podcast'ler", "Oynatma listeleri", "Sürümler")
@@ -355,12 +349,12 @@ fun ChannelScreen(vm: MainViewModel, id: String, name: String) {
             if (h != null && tabs.isEmpty() && !loading) item { Text("Bu kanalda video yok.", style = T.body.copy(color = C.text2), modifier = Modifier.padding(24.dp)) }
             if (loading && videos.isEmpty() && shorts.isEmpty() && lists.isEmpty()) items(3) { SkeletonCard() }
             // Videolar
-            items(kanalVideo, key = { "v" + it.id }) { v ->
+            items(videos, key = { "v" + it.id }) { v ->
                 val vv = v.copy(channel = v.channel.ifEmpty { ref.name }, channelId = v.channelId.ifEmpty { ref.id }, channelAvatar = v.channelAvatar ?: ref.avatar)
                 VideoCard(vv.copy(channel = ""), onClick = { vm.open(vv, videos) }, onMore = { vm.menu.value = vv })
             }
             // Shorts: 3'lü dikey ızgara
-            items(kanalShort.chunked(3), key = { "s" + it.first().id }) { row ->
+            items(shorts.chunked(3), key = { "s" + it.first().id }) { row ->
                 Row(Modifier.fillMaxWidth().padding(bottom = 2.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                     row.forEach { v ->
                         val vv = v.copy(channel = ref.name, channelId = ref.id, channelAvatar = ref.avatar)
@@ -641,9 +635,9 @@ fun SettingsScreen(vm: MainViewModel) {
                 SwitchRow("Kaldığın yerden devam", null, s.resume) { v -> Store.updateSettings { it.copy(resume = v) } }
                 SwitchRow("Panodaki bağlantıyı yakala", "Kopyaladığın YouTube bağlantısını tek dokunuşla aç", s.clipboard) { v -> Store.updateSettings { it.copy(clipboard = v) } }
 
-                Head("Filtreleme (yapay zekâ)")
-                MenuRow(null, "Kurallar ve engellenen kanallar", "${com.erkam.temasa.filtre.Filtre.kurallar.value.count { it.acik }} kural") { vm.filtreAcik.value = true }
-                if (!com.erkam.temasa.filtre.Evren.gomulu) MenuRow(null, "EVREN anahtarı", if (com.erkam.temasa.filtre.Evren.hazir) "••••${com.erkam.temasa.filtre.Evren.anahtarSonu()}" else "Girilmedi") { vm.filtreAcik.value = true }
+                Head("Yapay zekâ")
+                MenuRow(null, "Yapay zekâya sor", "Video bul") { vm.push(Screen.Yz) }
+                if (!com.erkam.temasa.yz.Evren.gomulu) MenuRow(null, "Yapay zekâ anahtarı", if (com.erkam.temasa.yz.Evren.hazir) "••••${com.erkam.temasa.yz.Evren.anahtarSonu()}" else "Girilmedi") { vm.anahtarSor.value = true }
 
                 Head("Video kalitesi")
                 MenuRow(null, "Wi-Fi'de", q(s.qualityWifi)) { dialog = "wifi" }

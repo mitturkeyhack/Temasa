@@ -65,6 +65,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.erkam.temasa.account.LoginActivity
+import com.erkam.temasa.play.Player
 import com.erkam.temasa.data.Store
 import com.erkam.temasa.yt.CommentPage
 import com.erkam.temasa.yt.Comments
@@ -246,6 +247,7 @@ fun CommentsSheet(vm: MainViewModel, videoId: String, initial: CommentPage?, onD
                             style = T.body.copy(color = C.text2), modifier = Modifier.padding(24.dp)
                         )
                     }
+                    if (items.isNotEmpty()) item(key = "yzozet") { YorumOzetiKarti(videoId, Player.video.value?.takeIf { it.id == videoId }?.title.orEmpty()) }
                     items(items, key = { "c" + it.id }) { c ->
                         CommentRow(c, big = true, onLike = { rate(c, true) }, onDislike = { rate(c, false) },
                             onReply = { if (!needLogin()) openReplies(c) },

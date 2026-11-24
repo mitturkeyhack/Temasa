@@ -130,6 +130,7 @@ fun TemasaApp(vm: MainViewModel) {
                         is Screen.Playlist -> PlaylistScreen(vm, s.id, s.title)
                         is Screen.Library -> LibraryScreen(vm, s.id, s.title)
                         Screen.Settings -> SettingsScreen(vm)
+                        Screen.Yz -> YzScreen(vm)
                         null -> when (tab) {
                             Tab.HOME -> HomeScreen(vm, homeList)
                             Tab.SUBS -> SubsScreen(vm, subsList)
@@ -159,7 +160,8 @@ fun TemasaApp(vm: MainViewModel) {
         vm.menu.collectAsState().value?.let { VideoMenu(vm, it) }
         vm.saveTo.collectAsState().value?.let { SaveToSheet(vm, it) }
         vm.downloadFor.collectAsState().value?.let { DownloadDialog(vm, it) }
-        if (vm.filtreAcik.collectAsState().value) FiltrePaneli(vm)
+        vm.yzVideo.collectAsState().value?.let { YzPenceresi(vm, it) }
+        if (vm.anahtarSor.collectAsState().value) AnahtarPenceresi(vm)
     }
 }
 
@@ -228,15 +230,6 @@ private fun VideoMenu(vm: MainViewModel, v: Video) {
             }
             if (v.channelId.isNotEmpty()) MenuRow(Icons.Outlined.Person, "Kanala git") { dismiss(); vm.push(Screen.Channel(v.channelId, v.channel)) }
             if (Store.history.value.any { it.id == v.id }) MenuRow(Icons.Outlined.Delete, "İzleme geçmişinden kaldır") { dismiss(); Store.removeHistory(v.id) }
-            HorizontalDivider(color = C.divider, modifier = Modifier.padding(vertical = 4.dp))
-            MenuRow(Icons.Outlined.VisibilityOff, "Bunun gibileri gösterme") {
-                dismiss()
-                if (!com.erkam.temasa.filtre.Evren.hazir) { vm.toast("Önce Filtreleme'de EVREN anahtarını gir"); vm.filtreAcik.value = true }
-                else { vm.toast("Yapay zekâ bakıyor…"); com.erkam.temasa.filtre.Filtre.bununGibileri(v) { vm.toast(it) } }
-            }
-            if (v.channelId.isNotEmpty()) MenuRow(Icons.Outlined.Block, "Bu kanalı hiç gösterme") {
-                dismiss(); com.erkam.temasa.filtre.Filtre.kanaliEngelle(v.channelId, v.channel.ifBlank { "Kanal" }); vm.toast("${v.channel.ifBlank { "Kanal" }} artık gösterilmeyecek")
-            }
         }
     }
 }

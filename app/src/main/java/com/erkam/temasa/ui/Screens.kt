@@ -102,7 +102,7 @@ fun TopBar(vm: MainViewModel, title: String? = null) {
     ) {
         if (title == null) Logo() else Text(title, style = T.header)
         Spacer(Modifier.weight(1f))
-        if (title == null) FiltreDugmesi(vm)
+        if (title == null) YzDugmesi(vm)
         IconButton(onClick = { vm.push(Screen.Search()) }) { Icon(Icons.Outlined.Search, "Ara", tint = C.text) }
         IconButton(onClick = { vm.selectTab(Tab.YOU) }) {
             if (photo != null || name != null) Avatar(photo, name ?: "S", 28.dp)
@@ -121,15 +121,13 @@ fun HomeScreen(vm: MainViewModel, list: LazyListState) {
     val error by vm.homeError.collectAsState()
     val chip by vm.chip.collectAsState()
     val clip by vm.clip.collectAsState()
-    val (suzulmus, bekliyor) = rememberSuzulmus(items)
     LoadMore(list) { vm.moreHome() }
 
     Column(Modifier.fillMaxSize()) {
         TopBar(vm)
         PullToRefreshBox(isRefreshing = loading && items.isNotEmpty(), onRefresh = { vm.refreshHome() }, modifier = Modifier.weight(1f)) {
             LazyColumn(state = list, modifier = Modifier.fillMaxSize()) {
-                item(key = "chips") { ChipRow(vm.chips.map { it.first }, chip, lead = { FiltreChip(vm) }) { vm.selectChip(it) } }
-                item(key = "filtre") { FiltreSeridi(vm) }
+                item(key = "chips") { ChipRow(vm.chips.map { it.first }, chip) { vm.selectChip(it) } }
                 clip?.let { c ->
                     item(key = "clip") {
                         Row(
@@ -149,19 +147,18 @@ fun HomeScreen(vm: MainViewModel, list: LazyListState) {
                         }
                     }
                 }
-                if ((items.isEmpty() && loading) || (suzulmus.isEmpty() && bekliyor)) items(4) { SkeletonCard() }
+                if (items.isEmpty() && loading) items(4) { SkeletonCard() }
                 if (items.isEmpty() && !loading && error != null) item {
                     Box(Modifier.fillMaxWidth().clickable { vm.refreshHome() }) {
                         Empty(Icons.Outlined.WifiOff, "Bağlantı yok", error, "Tekrar dene" to { vm.refreshHome() })
                     }
                 }
-                items(suzulmus, key = { "h" + it.id }) { v ->
+                items(items, key = { "h" + it.id }) { v ->
                     VideoCard(v, onClick = { vm.open(v) }, onChannel = {
                         if (v.channelId.isNotEmpty()) vm.push(Screen.Channel(v.channelId, v.channel))
                     }, onMore = { vm.menu.value = v })
                 }
                 if (items.isNotEmpty()) item { Loader() }
-                if (bekliyor && suzulmus.size < 4 && items.size > 10) item { LaunchedEffect(items.size) { vm.moreHome() } }
             }
         }
     }
@@ -191,7 +188,6 @@ fun SubsScreen(vm: MainViewModel, list: LazyListState) {
             else -> feed
         }
     }
-    val (suzulmus, bekliyor) = rememberSuzulmus(shown)
 
     Column(Modifier.fillMaxSize()) {
         TopBar(vm, "Abonelikler")
@@ -219,8 +215,8 @@ fun SubsScreen(vm: MainViewModel, list: LazyListState) {
                         "Oturum aç" to { login.launch(Intent(ctx, LoginActivity::class.java)) }
                     )
                 }
-                if ((feed.isEmpty() && loading) || (suzulmus.isEmpty() && bekliyor)) items(4) { SkeletonCard() }
-                items(suzulmus, key = { "s" + it.id }) { v ->
+                if (feed.isEmpty() && loading) items(4) { SkeletonCard() }
+                items(shown, key = { "s" + it.id }) { v ->
                     VideoCard(v, onClick = { vm.open(v) }, onChannel = {
                         if (v.channelId.isNotEmpty()) vm.push(Screen.Channel(v.channelId, v.channel))
                     }, onMore = { vm.menu.value = v })

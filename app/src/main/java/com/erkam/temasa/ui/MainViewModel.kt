@@ -25,6 +25,7 @@ sealed interface Screen {
     /** Uygulama içi liste: "history", "later", "liked", "lists" ya da liste kimliği */
     data class Library(val id: String, val title: String = "") : Screen
     data object Settings : Screen
+    data object Yz : Screen
 }
 
 enum class Tab { HOME, SUBS, DOWNLOADS, YOU }
@@ -44,7 +45,8 @@ class MainViewModel : ViewModel() {
     val menu = MutableStateFlow<Video?>(null)          // videonun "⋮" menüsü
     val saveTo = MutableStateFlow<Video?>(null)        // listeye kaydet
     val downloadFor = MutableStateFlow<Video?>(null)   // indirme kalitesi seç
-    val filtreAcik = MutableStateFlow(false)           // yapay zekâ Filtreleme paneli
+    val yzVideo = MutableStateFlow<Video?>(null)        // videonun "Sor" penceresi
+    val anahtarSor = MutableStateFlow(false)            // yapay zekâ anahtarı girme penceresi
 
     // Ana sayfa
     val chip = MutableStateFlow(0)
