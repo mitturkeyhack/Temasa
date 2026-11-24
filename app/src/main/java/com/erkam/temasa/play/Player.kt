@@ -74,7 +74,9 @@ object Player {
     lateinit var exo: ExoPlayer
         private set
     private lateinit var app: Context
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate + kotlinx.coroutines.CoroutineExceptionHandler { _, e ->
+        android.util.Log.e("Temasa", "oynatıcı", e); loading.value = false; if (error.value == null) error.value = "Video açılamadı. Tekrar dene."
+    })
 
     val video = MutableStateFlow<Video?>(null)
     val info = MutableStateFlow<StreamInfo?>(null)
@@ -309,17 +311,32 @@ object Player {
         }
 
     private fun prepare(i: StreamInfo, startMs: Long, autoPlay: Boolean) {
+        try { prepareIn(i, startMs, autoPlay) } catch (e: Throwable) {
+            loading.value = false
+            error.value = if (i.streamType == StreamType.LIVE_STREAM || i.streamType == StreamType.AUDIO_LIVE_STREAM)
+                "Bu canlı yayın şu an açılamıyor. Tekrar dene." else "Video açılamadı. Tekrar dene."
+        }
+    }
+
+    /** Canlı ve yeni bitmiş yayınlar: YouTube'un hazır akış listesi (HLS / DASH) */
+    private fun manifest(i: StreamInfo, item: MediaItem): MediaSource {
+        val hls = i.hlsUrl?.takeIf { it.isNotBlank() }
+            ?: (i.videoStreams + i.videoOnlyStreams).firstOrNull { it.isUrl && it.deliveryMethod == DeliveryMethod.HLS }?.content
+        if (hls != null) return HlsMediaSource.Factory(dataSource).createMediaSource(item.buildUpon().setUri(hls).build())
+        val dash = i.dashMpdUrl?.takeIf { it.isNotBlank() } ?: throw IllegalStateException("Akış yok")
+        return DashMediaSource.Factory(dataSource).createMediaSource(item.buildUpon().setUri(dash).build())
+    }
+
+    private fun prepareIn(i: StreamInfo, startMs: Long, autoPlay: Boolean) {
         local.value = false
         val v = video.value ?: return
         val item = mediaItem(v)
         val heights = videoStreams(i).map { minOf(it.width, it.height).takeIf { h -> h > 0 } ?: it.height }.distinct().sortedDescending()
         qualities.value = heights
         val src: MediaSource = when {
-            i.streamType == StreamType.LIVE_STREAM || i.streamType == StreamType.AUDIO_LIVE_STREAM -> {
-                val hls = i.hlsUrl
-                if (!hls.isNullOrEmpty()) HlsMediaSource.Factory(dataSource).createMediaSource(item.buildUpon().setUri(hls).build())
-                else DashMediaSource.Factory(dataSource).createMediaSource(item.buildUpon().setUri(i.dashMpdUrl).build())
-            }
+            i.streamType == StreamType.LIVE_STREAM || i.streamType == StreamType.AUDIO_LIVE_STREAM -> manifest(i, item)
+            // Parça parça akış yoksa (ör. yeni bitmiş canlı yayın) hazır listeyi kullan
+            videoStreams(i).isEmpty() && i.videoStreams.none { it.isUrl && it.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP } -> manifest(i, item)
             useDash -> dash(i, item) ?: progressive(i, item).also { useDash = false }
             else -> progressive(i, item)
         }
@@ -401,8 +418,8 @@ object Player {
         val a = audioStreams(i).maxByOrNull { it.averageBitrate }
         val pf = ProgressiveMediaSource.Factory(dataSource)
         if (v == null || a == null) {
-            val muxed = i.videoStreams.filter { it.isUrl }.maxByOrNull { it.height }
-                ?: throw IllegalStateException("Akış yok")
+            val muxed = i.videoStreams.filter { it.isUrl && it.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP }.maxByOrNull { it.height }
+                ?: return manifest(i, item)
             return pf.createMediaSource(item.buildUpon().setUri(muxed.content).build())
         }
         return MergingMediaSource(true,
