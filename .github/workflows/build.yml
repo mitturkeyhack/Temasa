@@ -32,7 +32,7 @@ jobs:
           echo "APP_PATCH=$(( ${LAST##*.} + 1 ))" >> $GITHUB_ENV
       - name: APK
         env:
-          EVREN_KEY: ${{ secrets.EVREN_KEY }}
+          EVREN_KEY: ${{ secrets.EVREN_KEY || vars.EVREN_KEY }}
         run: |
           chmod +x gradlew
           ./gradlew :app:assembleRelease --no-daemon

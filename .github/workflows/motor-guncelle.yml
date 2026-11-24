@@ -50,7 +50,7 @@ jobs:
       - name: Yeni motorla derle (başarısızsa hiçbir şey yayınlanmaz)
         if: steps.v.outputs.new != ''
         env:
-          EVREN_KEY: ${{ secrets.EVREN_KEY }}
+          EVREN_KEY: ${{ secrets.EVREN_KEY || vars.EVREN_KEY }}
         run: |
           sed -i "s/NewPipeExtractor:v${{ steps.v.outputs.cur }}/NewPipeExtractor:v${{ steps.v.outputs.new }}/" app/build.gradle.kts
           chmod +x gradlew
