@@ -45,6 +45,7 @@ class MainActivity : ComponentActivity() {
         )
         if (Build.VERSION.SDK_INT >= 33) notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         if (savedInstanceState == null) handle(intent)
+        com.erkam.temasa.data.Updater.check(this, silent = true)
         setContent { TemasaApp(vm) }
 
         // Tam ekran düğmesi: yataya çevir; çıkınca dikeye dön

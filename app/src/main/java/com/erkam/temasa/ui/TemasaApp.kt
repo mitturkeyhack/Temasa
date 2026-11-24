@@ -169,8 +169,13 @@ private fun BottomNav(vm: MainViewModel, tab: Tab) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center
             ) {
-                if (photo != null || name != null) Avatar(photo, name ?: "S", 24.dp)
-                else Icon(Icons.Outlined.AccountCircle, null, tint = C.text, modifier = Modifier.size(24.dp))
+                val upd by com.erkam.temasa.data.Updater.state.collectAsState()
+                Box {
+                    if (photo != null || name != null) Avatar(photo, name ?: "S", 24.dp)
+                    else Icon(Icons.Outlined.AccountCircle, null, tint = C.text, modifier = Modifier.size(24.dp))
+                    if (upd.phase == com.erkam.temasa.data.Updater.Phase.AVAILABLE || upd.phase == com.erkam.temasa.data.Updater.Phase.READY)
+                        Box(Modifier.align(Alignment.TopEnd).size(10.dp).clip(androidx.compose.foundation.shape.CircleShape).background(C.bg).padding(2.dp).clip(androidx.compose.foundation.shape.CircleShape).background(C.red))
+                }
                 Spacer(Modifier.height(4.dp))
                 Text("Sen", color = C.text, fontSize = 10.sp, fontWeight = if (tab == Tab.YOU) FontWeight.SemiBold else FontWeight.Normal)
             }

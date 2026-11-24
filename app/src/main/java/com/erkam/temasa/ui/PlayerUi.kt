@@ -320,8 +320,10 @@ fun PlayerBox(
                 }
 
                 error?.let {
+                    val upd by com.erkam.temasa.data.Updater.state.collectAsState()
                     Column(Modifier.align(Alignment.Center).padding(top = 120.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(it, color = Color.White, fontSize = 13.sp)
+                        if (upd.hasUpdate) Text("Yeni sürüm var: Sen → Güncelle", color = C.accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
 

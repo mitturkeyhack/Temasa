@@ -5,6 +5,9 @@ import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import com.erkam.temasa.data.Updater.Phase
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -72,7 +75,7 @@ import com.erkam.temasa.data.Store
 import kotlinx.coroutines.launch
 
 @Composable
-fun Logo(modifier: Modifier = Modifier) {
+fun Logo(modifier: Modifier = Modifier, iconOnly: Boolean = false) {
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(width = 30.dp, height = 22.dp).clip(RoundedCornerShape(7.dp)).background(C.accent), contentAlignment = Alignment.Center) {
             androidx.compose.foundation.Canvas(Modifier.size(10.dp)) {
@@ -82,6 +85,7 @@ fun Logo(modifier: Modifier = Modifier) {
                 drawPath(p, C.bg)
             }
         }
+        if (iconOnly) return@Row
         Spacer(Modifier.width(6.dp))
         Text("Temâşâ", color = C.text, fontSize = 20.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp)
     }
@@ -344,7 +348,106 @@ fun YouScreen(vm: MainViewModel) {
             Divider()
             MenuRow(Icons.Outlined.Settings, "Ayarlar") { vm.push(Screen.Settings) }
             if (signed) MenuRow(Icons.Outlined.Logout, "Oturumu kapat") { Account.signOut(); vm.onSignedChanged(); vm.toast("Oturum kapatıldı") }
-            Spacer(Modifier.height(24.dp))
+            UpdateCard()
+            Spacer(Modifier.height(28.dp))
         }
+    }
+}
+
+
+// ---------------- Güncelleme kartı (Sen sekmesinin en altı) ----------------
+
+@Composable
+fun UpdateCard() {
+    val ctx = LocalContext.current
+    val st by com.erkam.temasa.data.Updater.state.collectAsState()
+    val U = com.erkam.temasa.data.Updater
+    val cur = remember { U.current(ctx) }
+    androidx.compose.runtime.LaunchedEffect(Unit) { U.check(ctx, silent = true) }
+    val rel = st.release
+    val highlight = st.phase == Phase.AVAILABLE || st.phase == Phase.READY
+    val ago = if (st.checkedAt > 0) {
+        val m = (System.currentTimeMillis() - st.checkedAt) / 60000
+        if (m < 1) "az önce denetlendi" else if (m < 60) "$m dk önce denetlendi" else "${m / 60} saat önce denetlendi"
+    } else "henüz denetlenmedi"
+    val (title, sub) = when (st.phase) {
+        Phase.CHECKING -> "Denetleniyor..." to "Sürüm $cur"
+        Phase.AVAILABLE -> "Yeni sürüm: ${rel?.version}" to "Şu an $cur · ${Fmt.bytes(rel?.size ?: 0)}"
+        Phase.DOWNLOADING -> "İndiriliyor..." to "Yeni sürüm ${rel?.version}"
+        Phase.READY -> "Kurulmaya hazır" to (st.error ?: "Yükle'ye bas, birkaç saniye sürer")
+        Phase.INSTALLING -> "Kuruluyor..." to "Android'in onay ekranında Yükle'ye bas"
+        Phase.ERROR -> "Güncelleme" to (st.error ?: "Bir sorun oldu")
+        else -> "Temâşâ güncel" to "Sürüm $cur · $ago"
+    }
+    Column(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 16.dp)) {
+        Column(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(Color(0xFF181818))
+                .border(1.dp, if (highlight) C.accent.copy(alpha = 0.45f) else Color(0xFF2A2A2A), RoundedCornerShape(20.dp))
+                .padding(16.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(52.dp)) {
+                    Box(
+                        Modifier.size(52.dp).clip(RoundedCornerShape(16.dp)).background(C.bg).border(1.dp, Color(0xFF2A2A2A), RoundedCornerShape(16.dp)),
+                        contentAlignment = Alignment.Center
+                    ) { Logo(Modifier, iconOnly = true) }
+                    if (highlight) Box(Modifier.align(Alignment.TopEnd).offset(x = 3.dp, y = (-3).dp).size(14.dp).clip(androidx.compose.foundation.shape.CircleShape).background(Color(0xFF181818)).padding(2.dp).clip(androidx.compose.foundation.shape.CircleShape).background(C.red))
+                }
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(title, style = T.title.copy(fontSize = 16.sp, fontWeight = FontWeight.SemiBold))
+                    Spacer(Modifier.height(3.dp))
+                    Text(sub, style = T.meta.copy(fontSize = 13.sp, lineHeight = 18.sp))
+                }
+                Spacer(Modifier.width(8.dp))
+                val (label, filled, action) = when (st.phase) {
+                    Phase.AVAILABLE -> Triple("Güncelle", true) { U.download(ctx) }
+                    Phase.DOWNLOADING -> Triple("İptal", false) { U.cancel() }
+                    Phase.READY -> Triple("Yükle", true) { U.install(ctx) }
+                    Phase.INSTALLING -> Triple("Yükle", true) { U.install(ctx) }
+                    Phase.CHECKING -> Triple("Denetle", false) { }
+                    else -> Triple("Denetle", false) { U.check(ctx) }
+                }
+                Box(
+                    Modifier.height(38.dp).clip(RoundedCornerShape(19.dp))
+                        .background(if (filled) C.accent else Color.Transparent)
+                        .then(if (filled) Modifier else Modifier.border(1.dp, C.chipHi, RoundedCornerShape(19.dp)))
+                        .clickable(enabled = st.phase != Phase.CHECKING, onClick = action).padding(horizontal = 16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (st.phase == Phase.CHECKING) androidx.compose.material3.CircularProgressIndicator(color = C.text, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+                    else Text(label, color = if (filled) C.bg else C.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+            if ((st.phase == Phase.AVAILABLE || st.phase == Phase.READY) && rel != null && rel.notes.isNotEmpty()) {
+                Spacer(Modifier.height(14.dp))
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Color(0xFF202020)).padding(12.dp)) {
+                    Text("YENİLİKLER", color = C.text2, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.4.sp)
+                    rel.notes.forEach { n ->
+                        Spacer(Modifier.height(8.dp))
+                        Row {
+                            Text("•", color = C.accent, fontSize = 13.sp)
+                            Spacer(Modifier.width(8.dp))
+                            Text(n, style = T.body.copy(fontSize = 13.sp, lineHeight = 18.sp))
+                        }
+                    }
+                }
+            }
+            if (st.phase == Phase.DOWNLOADING) {
+                Spacer(Modifier.height(14.dp))
+                Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(Color(0xFF2A2A2A))) {
+                    Box(Modifier.fillMaxWidth(st.progress).height(6.dp).clip(RoundedCornerShape(3.dp)).background(C.accent))
+                }
+                Spacer(Modifier.height(6.dp))
+                Row {
+                    Text("%${(st.progress * 100).toInt()}", style = T.meta, modifier = Modifier.weight(1f))
+                    Text("${Fmt.bytes(st.bytes)} / ${Fmt.bytes(rel?.size ?: 0)}", style = T.meta)
+                }
+            }
+        }
+        Text(
+            "Videolar açılmazsa önce buradan güncelle. YouTube bir şey değiştirdiğinde düzeltme buraya gelir.",
+            color = Color(0xFF8A8A8A), fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+        )
     }
 }

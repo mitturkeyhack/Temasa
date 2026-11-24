@@ -30,5 +30,5 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="v1.0.${{ github.run_number }}"
-          gh release create "$TAG" Temasa.apk --title "Temâşâ $TAG" --latest \
-            --notes "Telefona indirip kur: Temasa.apk"
+          git log -1 --pretty=%B | grep -v -e "Co-Authored-By" -e "Claude-Session" > notes.txt
+          gh release create "$TAG" Temasa.apk --title "Temâşâ $TAG" --latest --notes-file notes.txt
