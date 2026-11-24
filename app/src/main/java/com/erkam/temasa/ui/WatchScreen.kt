@@ -60,6 +60,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -127,17 +133,50 @@ fun WatchScreen(vm: MainViewModel, onMinimize: () -> Unit) {
     val listState = rememberLazyListState()
     LaunchedEffect(v.id) { listState.scrollToItem(0) }
 
-    Column(Modifier.fillMaxSize().background(C.bg)) {
-        Box(Modifier.fillMaxWidth().background(Color.Black).statusBarsPadding()) {
+    val k = LocalKucultme.current
+    val yogunluk = androidx.compose.ui.platform.LocalDensity.current
+    val sagda by vm.miniSagda.collectAsState()
+    val ustBosluk = androidx.compose.foundation.layout.WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val altBosluk = 57.dp + androidx.compose.foundation.layout.WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
+    // Mini oynatıcının yeri (MiniPlayer ile aynı hesap)
+    val tamG = with(yogunluk) { maxWidth.toPx() }
+    val tamY = with(yogunluk) { maxHeight.toPx() }
+    val miniG = tamG * 0.52f
+    val miniY = miniG * 9f / 16f
+    val kenar = with(yogunluk) { 12.dp.toPx() }
+    val hedefX = if (sagda) tamG - miniG - kenar else kenar
+    val ust = with(yogunluk) { ustBosluk.toPx() }
+    val hedefY = tamY - with(yogunluk) { altBosluk.toPx() } - miniY - kenar - ust
+    val olcek = miniG / tamG
+    if (k != null) k.yol = hedefY.coerceAtLeast(1f)
+    val koseR = with(yogunluk) { 12.dp.toPx() }
+    Column(Modifier.fillMaxSize().drawBehind { drawRect(C.bg, alpha = 1f - (k?.p?.value ?: 0f)) }) {
+        Box(Modifier.fillMaxWidth().zIndex(1f).drawBehind { drawRect(Color.Black, alpha = 1f - (k?.p?.value ?: 0f)) }.statusBarsPadding()) {
             val expanded by vm.expanded.collectAsState()
             PlayerBox(
                 vm, fullscreen = false, active = expanded,
-                modifier = Modifier.fillMaxWidth().aspectRatio(aspect.coerceIn(0.75f, 2.4f)),
+                modifier = Modifier.fillMaxWidth().aspectRatio(aspect.coerceIn(0.75f, 2.4f)).graphicsLayer {
+                    val p = k?.p?.value ?: 0f
+                    val s = 1f + (olcek - 1f) * p
+                    transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
+                    scaleX = s; scaleY = s
+                    translationX = hedefX * p
+                    translationY = hedefY * p
+                    if (p > 0f) {
+                        shape = RoundedCornerShape((koseR * p / s).toDp())
+                        clip = true
+                    }
+                },
                 onMinimize = onMinimize,
                 onSettings = { showSettings = true },
             )
         }
-        LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+        LazyColumn(state = listState, modifier = Modifier.fillMaxSize().graphicsLayer {
+            val p = k?.p?.value ?: 0f
+            alpha = (1f - p * 2.2f).coerceIn(0f, 1f)
+            translationY = p * size.height * 0.25f
+        }, contentPadding = PaddingValues(bottom = 24.dp)) {
             item(key = "title") {
                 Column(Modifier.fillMaxWidth().clickable { showDesc = true }.padding(start = 12.dp, end = 12.dp, top = 12.dp)) {
                     Text(v.title.ifEmpty { " " }, style = T.titleBig, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -284,6 +323,7 @@ fun WatchScreen(vm: MainViewModel, onMinimize: () -> Unit) {
             item { Spacer(Modifier.navigationBarsPadding()) }
         }
     }
+    }
 
     if (showSettings) PlayerSettingsSheet { showSettings = false }
     if (showDesc) DescriptionSheet(likes) { showDesc = false }
@@ -331,7 +371,7 @@ fun MiniPlayer(vm: MainViewModel, bottom: androidx.compose.ui.unit.Dp) {
     val density = androidx.compose.ui.platform.LocalDensity.current
     val scope = rememberCoroutineScope()
     var controls by remember { mutableStateOf(true) }
-    var right by remember { mutableStateOf(true) }
+    val right by vm.miniSagda.collectAsState()
     val dx = remember { androidx.compose.animation.core.Animatable(0f) }
     val dy = remember { androidx.compose.animation.core.Animatable(0f) }
     LaunchedEffect(controls, playing) { if (controls && playing) { kotlinx.coroutines.delay(3000); controls = false } }
@@ -360,6 +400,12 @@ fun MiniPlayer(vm: MainViewModel, bottom: androidx.compose.ui.unit.Dp) {
                         onDrag = { ch, d -> ch.consume(); scope.launch { dx.snapTo(dx.value + d.x); dy.snapTo(dy.value + d.y) } },
                         onDragEnd = {
                             scope.launch {
+                                if (dy.value < -hPx * 0.5f) {
+                                    // Yukarı çekildi: büyüt
+                                    vm.expanded.value = true
+                                    dx.snapTo(0f); dy.snapTo(0f)
+                                    return@launch
+                                }
                                 if (dy.value > hPx * 0.6f) {
                                     // Aşağı atıldı: kapat
                                     dy.animateTo(fullH, androidx.compose.animation.core.tween(180))
@@ -372,7 +418,7 @@ fun MiniPlayer(vm: MainViewModel, bottom: androidx.compose.ui.unit.Dp) {
                                 val target = (if (toRight) fullW - wPx - mPx else mPx) - baseX
                                 launch { dy.animateTo(0f, androidx.compose.animation.core.spring(0.8f, 400f)) }
                                 dx.animateTo(target, androidx.compose.animation.core.spring(0.8f, 400f))
-                                right = toRight
+                                vm.miniSagda.value = toRight
                                 dx.snapTo(0f)
                             }
                         }

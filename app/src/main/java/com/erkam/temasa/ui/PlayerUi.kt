@@ -143,6 +143,7 @@ fun PlayerBox(
     onSettings: () -> Unit,
 ) {
     val ctx = LocalContext.current
+    val kucultme = if (fullscreen) null else LocalKucultme.current
     val video by Player.video.collectAsState()
     val playing by Player.playing.collectAsState()
     val buffering by Player.buffering.collectAsState()
@@ -218,14 +219,25 @@ fun PlayerBox(
                             onVerticalDrag = { ch, dy -> ch.consume(); total += dy }
                         )
                     } else {
-                        // Aşağı kaydır = küçült, yukarı kaydır = tam ekran
+                        // Aşağı kaydır = parmağı izleyerek küçül, yukarı kaydır = tam ekran
                         var total = 0f
+                        val hiz = androidx.compose.ui.input.pointer.util.VelocityTracker()
                         detectVerticalDragGestures(
-                            onDragStart = { total = 0f },
+                            onDragStart = { total = 0f; hiz.resetTracking() },
                             onDragEnd = {
-                                if (total > 120) onMinimize() else if (total < -120) vm.fullscreen.value = true
+                                val k = kucultme
+                                val v = hiz.calculateVelocity().y
+                                if (k != null && k.p.value > 0f) k.birak(v)
+                                else if (k == null && total > 120) onMinimize()
+                                else if (total < -120) vm.fullscreen.value = true
                             },
-                            onVerticalDrag = { ch, dy -> ch.consume(); total += dy }
+                            onDragCancel = { kucultme?.let { if (it.p.value > 0f) it.birak(0f) } },
+                            onVerticalDrag = { ch, dy ->
+                                ch.consume(); total += dy
+                                hiz.addPosition(ch.uptimeMillis, ch.position)
+                                val k = kucultme
+                                if (k != null && (total > 0f || k.p.value > 0f)) k.surukle(dy)
+                            }
                         )
                     }
                 }

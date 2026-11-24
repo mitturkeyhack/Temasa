@@ -70,6 +70,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -115,6 +116,17 @@ fun TemasaApp(vm: MainViewModel) {
             return@TemasaTheme
         }
 
+        // Video sayfası ↔ mini oynatıcı geçişi
+        val gecisScope = rememberCoroutineScope()
+        val kucultme = remember { Kucultme(gecisScope, vm) }
+        val onceki = remember { booleanArrayOf(false) }
+        val miniVardi = onceki[0]
+        onceki[0] = video != null && !expanded
+        LaunchedEffect(expanded) {
+            if (!expanded) { kucultme.gorunsun = false; kucultme.p.snapTo(1f); kucultme.giris.snapTo(0f) }
+            else if (miniVardi) kucultme.buyut() else kucultme.ac()
+        }
+
         val homeList = rememberLazyListState()
         val subsList = rememberLazyListState()
 
@@ -145,12 +157,12 @@ fun TemasaApp(vm: MainViewModel) {
                 val navInset = androidx.compose.foundation.layout.WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
                 MiniPlayer(vm, bottom = 57.dp + navInset)
             }
-            AnimatedVisibility(
-                visible = expanded && video != null,
-                enter = slideInVertically(tween(260)) { it },
-                exit = slideOutVertically(tween(220)) { it },
-            ) {
-                WatchScreen(vm, onMinimize = { vm.expanded.value = false })
+            if (expanded && video != null) {
+                androidx.compose.runtime.CompositionLocalProvider(LocalKucultme provides kucultme) {
+                    Box(Modifier.fillMaxSize().graphicsLayer { translationY = kucultme.giris.value * size.height; alpha = if (kucultme.gorunsun) 1f else 0f }) {
+                        WatchScreen(vm, onMinimize = { kucultme.kucult() })
+                    }
+                }
             }
             SnackbarHost(snack, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 120.dp)) {
                 Snackbar(it, containerColor = C.surface, contentColor = C.text)

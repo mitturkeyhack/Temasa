@@ -35,6 +35,8 @@ class MainViewModel : ViewModel() {
     val tab = MutableStateFlow(Tab.HOME)
     val stack = MutableStateFlow<List<Screen>>(emptyList())
     val expanded = MutableStateFlow(false)
+    /** Mini oynatıcı sağda mı (sola da sürüklenebilir) */
+    val miniSagda = MutableStateFlow(true)
     val fullscreen = MutableStateFlow(false)
     val inPip = MutableStateFlow(false)
     val clip = MutableStateFlow<String?>(null)
