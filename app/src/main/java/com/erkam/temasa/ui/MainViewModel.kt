@@ -44,6 +44,7 @@ class MainViewModel : ViewModel() {
     val menu = MutableStateFlow<Video?>(null)          // videonun "⋮" menüsü
     val saveTo = MutableStateFlow<Video?>(null)        // listeye kaydet
     val downloadFor = MutableStateFlow<Video?>(null)   // indirme kalitesi seç
+    val filtreAcik = MutableStateFlow(false)           // yapay zekâ Filtreleme paneli
 
     // Ana sayfa
     val chip = MutableStateFlow(0)

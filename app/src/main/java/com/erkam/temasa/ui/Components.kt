@@ -223,11 +223,13 @@ fun Chip(text: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-fun ChipRow(items: List<String>, selected: Int, onSelect: (Int) -> Unit) {
+fun ChipRow(items: List<String>, selected: Int, lead: (@Composable () -> Unit)? = null, onSelect: (Int) -> Unit) {
     LazyRow(
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
     ) {
+        if (lead != null) item { lead() }
         itemsIndexed(items) { i, t -> Chip(t, i == selected) { onSelect(i) } }
     }
 }

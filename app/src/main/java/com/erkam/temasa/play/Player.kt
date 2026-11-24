@@ -1,5 +1,8 @@
 package com.erkam.temasa.play
 
+import com.erkam.temasa.filtre.Filtre
+import com.erkam.temasa.filtre.SesKontrol
+import com.erkam.temasa.filtre.Takilma
 import android.content.Context
 import android.media.MediaCodecList
 import android.net.ConnectivityManager
@@ -213,6 +216,7 @@ object Player {
         }
         savePos()
         loadJob?.cancel()
+        Filtre.takilma.value = if (Filtre.gizliMi(v.id)) Takilma(v.id, Filtre.nedenler[v.id] ?: "Kurallarına uymuyor") else null
         video.value = v
         info.value = null
         error.value = null
@@ -258,7 +262,13 @@ object Player {
             related.value = Yt.convert(i.relatedItems).filterIsInstance<Video>().filter { it.id != v.id }
 
             if (dl != null) playLocal(full, dl, start ?: 0)
-            else prepare(i, start ?: 0, autoPlay = true)
+            else prepare(i, start ?: 0, autoPlay = Filtre.takilma.value?.videoId != v.id)
+
+            // Filtreleme: ses kuralı açıksa ilk saniyeleri dinle
+            if (Filtre.sesKurali() != null && !Filtre.izinliMi(v.id) && Filtre.takilma.value?.videoId != v.id) launch {
+                val kadin = SesKontrol.kadinSesiMi(i, app.cacheDir)
+                if (kadin == true && video.value?.id == v.id && !Filtre.izinliMi(v.id)) Filtre.sestenTakildi(full)
+            }
 
             if (Store.settings.value.sponsorBlock && i.streamType != StreamType.LIVE_STREAM) {
                 launch { skips.value = Extras.sponsors(v.id) }
@@ -541,11 +551,17 @@ object Player {
     fun hasNext() = (queueIndex.value >= 0 && queueIndex.value < queue.value.size - 1) || related.value.isNotEmpty()
     fun hasPrev() = queueIndex.value > 0
 
+    private fun uygun(x: Video) = !Filtre.gizliMi(x.id) && (x.channelId.isEmpty() || x.channelId !in Filtre.engelliKanallar.value)
+
     fun next() {
         val q = queue.value; val i = queueIndex.value
-        if (i >= 0 && i < q.size - 1) { play(q[i + 1], 0); return }
+        if (i >= 0 && i < q.size - 1) {
+            val j = (i + 1 until q.size).firstOrNull { uygun(q[it]) }
+            if (j != null) { play(q[j], 0); return }
+        }
         val recent = Store.history.value.take(30).map { it.id }.toSet()
-        val n = related.value.firstOrNull { it.id !in recent && !it.live } ?: related.value.firstOrNull() ?: return
+        val r = related.value.filter { uygun(it) && it.id != video.value?.id }
+        val n = r.firstOrNull { it.id !in recent && !it.live } ?: r.firstOrNull() ?: return
         play(n, 0)
     }
 

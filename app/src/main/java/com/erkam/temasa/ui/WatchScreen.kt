@@ -84,6 +84,7 @@ fun WatchScreen(vm: MainViewModel, onMinimize: () -> Unit) {
     val video by Player.video.collectAsState()
     val info by Player.info.collectAsState()
     val related by Player.related.collectAsState()
+    val (oneriler, _) = rememberSuzulmus(related)
     val queue by Player.queue.collectAsState()
     val qi by Player.queueIndex.collectAsState()
     val aspect by Player.videoAspect.collectAsState()
@@ -273,7 +274,7 @@ fun WatchScreen(vm: MainViewModel, onMinimize: () -> Unit) {
             if (related.isEmpty() && info == null) {
                 items(3) { SkeletonCard() }
             }
-            items(related, key = { "r" + it.id }) { r ->
+            items(oneriler, key = { "r" + it.id }) { r ->
                 VideoCard(r, onClick = { vm.open(r) }, onChannel = {
                     if (r.channelId.isNotEmpty()) { onMinimize(); vm.push(Screen.Channel(r.channelId, r.channel)) }
                 }, onMore = { vm.menu.value = r })

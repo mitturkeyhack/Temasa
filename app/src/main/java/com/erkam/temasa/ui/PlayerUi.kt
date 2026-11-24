@@ -381,6 +381,8 @@ fun PlayerBox(
                 },
             )
         }
+        // Filtrelemeye takıldıysa
+        FiltreTakilmaKatmani()
     }
 }
 

@@ -24,6 +24,8 @@ class App : Application(), SingletonImageLoader.Factory {
         Yt.init()
         Downloads.init(this)
         Player.init(this)
+        com.erkam.temasa.filtre.Evren.init(this)
+        com.erkam.temasa.filtre.Filtre.init(this)
     }
 
     override fun newImageLoader(context: PlatformContext): ImageLoader =
