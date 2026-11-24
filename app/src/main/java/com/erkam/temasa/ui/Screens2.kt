@@ -662,6 +662,9 @@ fun SettingsScreen(vm: MainViewModel) {
                 if (signed) MenuRow(null, "Oturumu kapat", Store.profileName.collectAsState().value) { Account.signOut(); vm.onSignedChanged() }
                 else MenuRow(null, "Google ile oturum aç") { login.launch(Intent(ctx, LoginActivity::class.java)) }
 
+                Head("Güncelleme")
+                SwitchRow("Otomatik güncelle", "Yeni sürüm çıkınca Wi-Fi'de kendiliğinden indirilir, \"Hazır\" bildirimi gelir", s.autoUpdate) { v -> Store.updateSettings { it.copy(autoUpdate = v) } }
+
                 Head("Depolama")
                 MenuRow(null, "İzleme geçmişini temizle") { dialog = "clearHistory" }
                 MenuRow(null, "Arama geçmişini temizle") { Store.clearSearches(); vm.toast("Arama geçmişi temizlendi") }

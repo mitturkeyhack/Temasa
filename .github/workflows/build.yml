@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: yayin
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -20,6 +24,12 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Android SDK 37.2
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.2" "build-tools;37.0.0" > /dev/null
+      - name: Sürüm numarası (son yayın + 1)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          LAST=$(gh api repos/${{ github.repository }}/releases/latest --jq .tag_name 2>/dev/null || echo v1.0.0)
+          echo "APP_PATCH=$(( ${LAST##*.} + 1 ))" >> $GITHUB_ENV
       - name: APK
         run: |
           chmod +x gradlew
@@ -29,6 +39,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="v1.0.${{ github.run_number }}"
+          TAG="v1.0.$APP_PATCH"
           git log -1 --pretty=%B | grep -v -e "Co-Authored-By" -e "Claude-Session" > notes.txt
           gh release create "$TAG" Temasa.apk --title "Temâşâ $TAG" --latest --notes-file notes.txt

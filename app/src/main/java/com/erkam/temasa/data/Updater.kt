@@ -64,10 +64,10 @@ object Updater {
     private fun apk(ctx: Context) = File(ctx.cacheDir, "guncelleme").apply { mkdirs() }.resolve("Temasa.apk")
 
     /** Yeni sürüm var mı? silent: arka planda, hata göstermeden */
-    fun check(ctx: Context, silent: Boolean = false) {
+    fun check(ctx: Context, silent: Boolean = false, force: Boolean = false) {
         val s = state.value
         if (s.phase == Phase.CHECKING || s.phase == Phase.DOWNLOADING || s.phase == Phase.INSTALLING) return
-        if (silent && System.currentTimeMillis() - s.checkedAt < 3 * 3600_000L) return
+        if (silent && !force && System.currentTimeMillis() - s.checkedAt < 3600_000L) return
         val app = ctx.applicationContext
         if (!silent) state.update { it.copy(phase = Phase.CHECKING, error = null) }
         scope.launch {
@@ -94,6 +94,8 @@ object Updater {
                     ready -> state.value.copy(checkedAt = now)
                     else -> State(Phase.AVAILABLE, rel, checkedAt = now)
                 }
+                // Otomatik: Wi-Fi'deyse arkada indir, bitince "hazır" bildirimi
+                if (state.value.phase == Phase.AVAILABLE && Store.settings.value.autoUpdate && unmetered(app)) download(app, auto = true)
             }
             r.onFailure { e ->
                 if (!silent) state.update { it.copy(phase = Phase.ERROR, error = "Denetlenemedi. İnternet bağlantını kontrol et.", checkedAt = now) }
@@ -101,7 +103,12 @@ object Updater {
         }
     }
 
-    fun download(ctx: Context) {
+    private fun unmetered(ctx: Context): Boolean = runCatching {
+        val cm = ctx.getSystemService(android.net.ConnectivityManager::class.java)
+        !cm.isActiveNetworkMetered
+    }.getOrDefault(false)
+
+    fun download(ctx: Context, auto: Boolean = false) {
         val rel = state.value.release ?: return
         val app = ctx.applicationContext
         job?.cancel()
@@ -123,8 +130,37 @@ object Updater {
                     tmp.renameTo(f)
                 }
             }
-            r.onSuccess { state.update { it.copy(phase = Phase.READY, bytes = rel.size) }; withContext(Dispatchers.Main) { install(app) } }
-            r.onFailure { if (isActive) state.update { it.copy(phase = Phase.ERROR, error = "İndirilemedi. Tekrar dene.") } }
+            r.onSuccess {
+                state.update { it.copy(phase = Phase.READY, bytes = rel.size) }
+                if (auto) notifyReady(app, rel.version) else withContext(Dispatchers.Main) { install(app) }
+            }
+            r.onFailure {
+                if (isActive) state.update {
+                    if (auto) it.copy(phase = Phase.AVAILABLE, bytes = 0) else it.copy(phase = Phase.ERROR, error = "İndirilemedi. Tekrar dene.")
+                }
+            }
+        }
+    }
+
+    /** "Güncelleme hazır" bildirimi: dokununca kurulum başlar */
+    private fun notifyReady(ctx: Context, version: String) {
+        runCatching {
+            val nm = ctx.getSystemService(android.app.NotificationManager::class.java)
+            if (Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(
+                android.app.NotificationChannel("guncelleme", "Güncellemeler", android.app.NotificationManager.IMPORTANCE_DEFAULT)
+            )
+            val open = PendingIntent.getActivity(
+                ctx, 9, Intent(ctx, com.erkam.temasa.MainActivity::class.java).putExtra("update", true).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+            val n = androidx.core.app.NotificationCompat.Builder(ctx, "guncelleme")
+                .setSmallIcon(com.erkam.temasa.R.drawable.ic_stat_download)
+                .setContentTitle("Temâşâ güncellemesi hazır")
+                .setContentText("Sürüm $version indirildi. Kurmak için dokun.")
+                .setContentIntent(open)
+                .setAutoCancel(true)
+                .build()
+            nm.notify(11, n)
         }
     }
 

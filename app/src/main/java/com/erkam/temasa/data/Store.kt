@@ -34,6 +34,7 @@ data class Settings(
     val resume: Boolean = true,      // kaldığın yerden devam
     val accent: Long = 0xFF22C3B3,
     val clipboard: Boolean = true,   // panodaki bağlantıyı yakala
+    val autoUpdate: Boolean = true,  // yeni sürümü Wi-Fi'de kendiliğinden indir
 )
 
 /** Videoda kalınan yer */
@@ -85,6 +86,7 @@ object Store {
             resume = p.getBoolean("resume", true),
             accent = p.getLong("accent", 0xFF22C3B3),
             clipboard = p.getBoolean("clipboard", true),
+            autoUpdate = p.getBoolean("autoUpdate", true),
         )
         cookie.value = p.getString("cookie", null)
         profileName.value = p.getString("pName", null)
@@ -124,6 +126,7 @@ object Store {
             .putString("subLang", s.subtitleLang).putInt("dlQ", s.downloadQuality)
             .putBoolean("resume", s.resume).putLong("accent", s.accent)
             .putBoolean("clipboard", s.clipboard)
+            .putBoolean("autoUpdate", s.autoUpdate)
             .apply()
     }
 

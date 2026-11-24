@@ -239,6 +239,7 @@ object Player {
                 if (dl != null) { playLocal(v, dl, start ?: 0); return@launch }
                 loading.value = false
                 error.value = if (!online()) "İnternet bağlantısı yok" else "Video açılamadı. Tekrar dene."
+                if (online()) com.erkam.temasa.data.Updater.check(app, silent = true, force = true)
                 return@launch
             }
             if (video.value?.id != v.id) return@launch
@@ -577,6 +578,7 @@ object Player {
         if (retries > 3) {
             loading.value = false
             error.value = "Oynatma hatası. Tekrar dene."
+            com.erkam.temasa.data.Updater.check(app, silent = true, force = true)
             return
         }
         scope.launch {

@@ -1,0 +1,69 @@
+name: YouTube motorunu güncelle
+
+# YouTube bir şey değiştirdiğinde NewPipe ekibi motoru düzeltip yeni sürüm yayınlar.
+# Bu görev 6 saatte bir bakar; yeni sürüm varsa Temâşâ'yı onunla derler,
+# derleme başarılıysa kaydeder ve yayınlar. Uygulama da kendini günceller.
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yayin
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Yeni motor sürümü var mı?
+        id: v
+        run: |
+          CUR=$(grep -o 'NewPipeExtractor:v[0-9.]*' app/build.gradle.kts | sed 's/.*:v//')
+          NEW=$(git ls-remote --tags https://github.com/TeamNewPipe/NewPipeExtractor | grep -o 'refs/tags/v[0-9]*\.[0-9]*\.[0-9]*$' | sed 's|refs/tags/v||' | sort -V | tail -1)
+          echo "Şu an: $CUR, en yeni: $NEW"
+          if [ -n "$NEW" ] && [ "$NEW" != "$CUR" ] && [ "$(printf '%s\n%s\n' "$CUR" "$NEW" | sort -V | tail -1)" = "$NEW" ]; then
+            echo "new=$NEW" >> $GITHUB_OUTPUT
+            echo "cur=$CUR" >> $GITHUB_OUTPUT
+          fi
+      - if: steps.v.outputs.new != ''
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - if: steps.v.outputs.new != ''
+        uses: gradle/actions/setup-gradle@v4
+      - name: Android SDK 37.2
+        if: steps.v.outputs.new != ''
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.2" "build-tools;37.0.0" > /dev/null
+      - name: Sürüm numarası (son yayın + 1)
+        if: steps.v.outputs.new != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          LAST=$(gh api repos/${{ github.repository }}/releases/latest --jq .tag_name 2>/dev/null || echo v1.0.0)
+          echo "APP_PATCH=$(( ${LAST##*.} + 1 ))" >> $GITHUB_ENV
+      - name: Yeni motorla derle (başarısızsa hiçbir şey yayınlanmaz)
+        if: steps.v.outputs.new != ''
+        run: |
+          sed -i "s/NewPipeExtractor:v${{ steps.v.outputs.cur }}/NewPipeExtractor:v${{ steps.v.outputs.new }}/" app/build.gradle.kts
+          chmod +x gradlew
+          ./gradlew :app:assembleRelease --no-daemon
+          cp app/build/outputs/apk/release/app-release.apk Temasa.apk
+      - name: Kaydet ve yayınla
+        if: steps.v.outputs.new != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "Temâşâ otomatik güncelleme"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          printf 'YouTube motoru güncellendi (v%s)\n\n- YouTube'"'"'daki son değişikliklere uyum\n- Video açılmama sorunları için düzeltmeler\n' "${{ steps.v.outputs.new }}" > notes.txt
+          git add app/build.gradle.kts
+          git commit -F notes.txt
+          git pull --rebase
+          git push
+          gh release create "v1.0.$APP_PATCH" Temasa.apk --title "Temâşâ v1.0.$APP_PATCH" --latest --notes-file notes.txt

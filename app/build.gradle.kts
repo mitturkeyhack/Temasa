@@ -13,8 +13,10 @@ android {
         applicationId = "com.erkam.temasa"
         minSdk = 26
         targetSdk = 36
-        versionCode = (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 0) + 1
-        versionName = "1.0." + (System.getenv("GITHUB_RUN_NUMBER") ?: "0")
+        // Sürüm numarasını iş akışı verir (son yayın + 1); iki iş akışı da aynı sırayı kullanır
+        val patch = (System.getenv("APP_PATCH") ?: System.getenv("GITHUB_RUN_NUMBER") ?: "0").toInt()
+        versionCode = patch + 1
+        versionName = "1.0.$patch"
     }
 
     signingConfigs {

@@ -105,6 +105,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        // Uygulama her öne geldiğinde (en çok saatte bir) yeni sürüme bak
+        com.erkam.temasa.data.Updater.check(this, silent = true)
         // Oynatma hizmetine bağlan (bildirim ve kilit ekranı kontrolleri için)
         controller = MediaController.Builder(this, SessionToken(this, ComponentName(this, PlaybackService::class.java))).buildAsync()
     }
@@ -147,6 +149,7 @@ class MainActivity : ComponentActivity() {
         when {
             i.getBooleanExtra("watch", false) -> if (Player.video.value != null) vm.expanded.value = true
             i.getBooleanExtra("downloads", false) -> vm.selectTab(Tab.DOWNLOADS)
+            i.getBooleanExtra("update", false) -> { vm.selectTab(Tab.YOU); com.erkam.temasa.data.Updater.install(this) }
             i.action == Intent.ACTION_VIEW && i.data != null -> {
                 if (!vm.handleUrl(i.data.toString())) vm.toast("Bu bağlantı açılamadı")
             }
