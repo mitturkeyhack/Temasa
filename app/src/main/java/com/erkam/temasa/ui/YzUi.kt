@@ -27,6 +27,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -225,7 +229,7 @@ fun YzScreen(vm: MainViewModel) {
     val list = rememberLazyListState()
     LaunchedEffect(sohbet.size, calisiyor) { if (sohbet.isNotEmpty()) list.animateScrollToItem(list.layoutInfo.totalItemsCount.coerceAtLeast(1) - 1) }
 
-    Column(Modifier.fillMaxSize().background(C.bg).imePadding()) {
+    Column(Modifier.fillMaxSize().background(C.bg).windowInsetsPadding(androidx.compose.foundation.layout.WindowInsets.ime.union(androidx.compose.foundation.layout.WindowInsets.navigationBars))) {
         Row(
             Modifier.fillMaxWidth().statusBarsPadding().height(60.dp).padding(end = 4.dp),
             verticalAlignment = Alignment.CenterVertically

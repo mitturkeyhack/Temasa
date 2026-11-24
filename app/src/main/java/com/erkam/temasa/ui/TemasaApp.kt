@@ -151,7 +151,8 @@ fun TemasaApp(vm: MainViewModel) {
                         }
                     }
                 }
-                BottomNav(vm, tab)
+                // Yapay zekâ sohbetinde alt çubuk yok: yazma kutusu klavyenin tam üstüne otursun
+                if (stack.lastOrNull() != Screen.Yz) BottomNav(vm, tab)
             }
             if (video != null && !expanded) {
                 val navInset = androidx.compose.foundation.layout.WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()

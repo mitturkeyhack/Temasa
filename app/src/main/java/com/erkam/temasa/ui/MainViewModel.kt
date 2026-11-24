@@ -14,6 +14,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.schabi.newpipe.extractor.Page
@@ -53,6 +55,10 @@ class MainViewModel : ViewModel() {
     // Ana sayfa
     val chip = MutableStateFlow(0)
     val home = MutableStateFlow(Store.homeCache.value)
+    /** Son yenilemelerde en üstte gösterilenler: bir dahakinde geriye atılır (açılışta önceki ekran da sayılır) */
+    private val gosterilen = LinkedHashMap<String, Long>().apply {
+        val t = System.currentTimeMillis(); Store.homeCache.value.take(16).forEach { put(it.id, t) }
+    }
     val homeLoading = MutableStateFlow(false)
     val homeError = MutableStateFlow<String?>(null)
     private var homeNext: String? = null
@@ -174,16 +180,7 @@ class MainViewModel : ViewModel() {
             val r = runCatching {
                 when {
                     q == null -> {
-                        var list = emptyList<Video>()
-                        if (Account.signedIn) {
-                            val f = withContext(Dispatchers.IO) { Inner.home() }
-                            list = f.videos; homeNext = f.next
-                        }
-                        if (list.size < 6) {
-                            val seeds = Store.history.value.take(6).map { it.id }.shuffled().take(4)
-                            list = (list + Yt.discover(seeds)).distinctBy { it.id }
-                            homeNext = null
-                        }
+                        val list = karisikAkis()
                         Store.setHome(list)
                         list
                     }
@@ -200,6 +197,92 @@ class MainViewModel : ViewModel() {
             r.onFailure { if (home.value.isEmpty()) homeError.value = "Bağlantı sorunu. Yenilemek için dokun." }
             homeLoading.value = false
         }
+    }
+
+    // ---------- Ana sayfa: her yenilemede taze karışım ----------
+
+    private suspend fun ilgili(id: String): List<Video> = withContext(Dispatchers.IO) {
+        runCatching { Inner.parse(Inner.post("next", org.json.JSONObject().put("videoId", id), false)).videos }
+            .getOrElse { runCatching { Yt.related(id) }.getOrDefault(emptyList()) }
+            .filter { it.id != id && !it.live }
+    }
+
+    /**
+     * Ana sayfa akışı, birkaç kaynaktan:
+     * YouTube'un sana önerdikleri (oturum açıksa, iki sayfa), son izlediklerine benzerler (her seferinde farklı tohumlar),
+     * aboneliklerden yeniler ve hiç izlemediğin konulardan biraz keşif.
+     * İzleyip bitirdiklerin ve son yenilemelerde gösterilenler geriye atılır; böylece her yenilemede ekran değişir.
+     */
+    private suspend fun karisikAkis(): List<Video> = kotlinx.coroutines.coroutineScope {
+        val gecmis = Store.history.value
+        val izlenen = gecmis.take(300).filter { (Store.progress(it.id) ?: 0f) >= 0.85f }.map { it.id }.toSet()
+        // Tohumlar: son 40 izlenenden rastgele, yenilere daha çok şans
+        val adaylar = gecmis.take(40)
+        val tohumlar = adaylar.mapIndexed { i, v -> v to (Math.random() * (1.0 + (40 - i) / 10.0)) }
+            .sortedByDescending { it.second }.map { it.first.id }.distinct().take(5)
+
+        val ytIs = async(Dispatchers.IO) {
+            if (!Account.signedIn) return@async emptyList<Video>()
+            runCatching {
+                val f = Inner.home()
+                var l = f.videos
+                var n = f.next
+                // İkinci sayfa da: seçenek çoğalsın
+                if (n != null) runCatching { Inner.more(n) }.getOrNull()?.let { m -> l = l + m.videos; n = m.next }
+                homeNext = n
+                l
+            }.getOrDefault(emptyList())
+        }
+        val benzerIs = tohumlar.map { id -> async { ilgili(id).shuffled().take(10) } }
+        val aboneIs = async {
+            val f = subsFeed.value.ifEmpty {
+                runCatching {
+                    if (Account.signedIn) withContext(Dispatchers.IO) { Inner.subscriptionsFeed().videos }
+                    else Rss.feed(Store.subs.value)
+                }.getOrDefault(emptyList())
+            }
+            f.filter { !it.live }.take(25).shuffled().take(8)
+        }
+        val kesifIs = async {
+            // Geçmiş azsa ya da hiç yoksa: farklı konulardan popüler videolar
+            val konular = listOf("belgesel", "bilim", "tarih", "doğa", "teknoloji", "yemek tarifi", "seyahat", "komedi", "spor özet", "müzik", "podcast", "sohbet")
+            val n = if (gecmis.size < 5) 5 else 2
+            konular.shuffled().take(n).map { k ->
+                async { runCatching { Yt.search(k, Yt.Filter.VIDEOS).items.filterIsInstance<Video>().filter { !it.live }.shuffled().take(6) }.getOrDefault(emptyList()) }
+            }.awaitAll().flatten()
+        }
+
+        val yt = ytIs.await()
+        val benzer = benzerIs.awaitAll()
+        val abone = aboneIs.await()
+        val kesif = kesifIs.await()
+
+        // Kaynakları sırayla harmanla: YouTube önerisi, benzer, YouTube, abonelik, benzer, keşif…
+        val kuyruklar = (listOf(yt.toMutableList()) + benzer.map { it.toMutableList() } + listOf(abone.toMutableList(), kesif.toMutableList()))
+            .filter { it.isNotEmpty() }
+        val karisik = ArrayList<Video>()
+        val gorulmus = HashSet<String>()
+        var tur = 0
+        while (kuyruklar.any { it.isNotEmpty() } && tur < 200) {
+            kuyruklar.forEachIndexed { i, l ->
+                // YouTube'un kendi önerilerinden her turda iki tane al
+                repeat(if (i == 0 && yt.isNotEmpty()) 2 else 1) {
+                    while (l.isNotEmpty()) {
+                        val v = l.removeAt(0)
+                        if (v.id !in gorulmus && v.id !in izlenen) { gorulmus += v.id; karisik += v; break }
+                    }
+                }
+            }
+            tur++
+        }
+        // Son yenilemelerde üstte gösterilenler sona
+        val simdi = System.currentTimeMillis()
+        gosterilen.entries.removeAll { simdi - it.value > 6 * 3600_000L }
+        val (eski, yeni) = karisik.partition { it.id in gosterilen }
+        val sonuc = yeni + eski
+        sonuc.take(16).forEach { gosterilen[it.id] = simdi }
+        while (gosterilen.size > 600) gosterilen.remove(gosterilen.keys.first())
+        sonuc
     }
 
     private var moreJob: Job? = null
@@ -224,8 +307,8 @@ class MainViewModel : ViewModel() {
                     }
                     q == null -> {
                         // Sonsuz akış: izlenen son videolara benzerlerden devam
-                        val seeds = (home.value.takeLast(10).map { it.id } + Store.history.value.take(3).map { it.id }).shuffled().take(3)
-                        Yt.discover(seeds)
+                        val seeds = (home.value.takeLast(15).map { it.id } + Store.history.value.take(20).map { it.id }).shuffled().take(4)
+                        kotlinx.coroutines.coroutineScope { seeds.map { id -> async { ilgili(id).shuffled().take(8) } }.awaitAll() }.flatten().shuffled()
                     }
                     else -> emptyList()
                 }
