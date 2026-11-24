@@ -153,8 +153,7 @@ fun PlayerBox(
     val chapters by Player.chapters.collectAsState()
     val skips by Player.skips.collectAsState()
     val speed by Player.speed.collectAsState()
-    val subtitle by Player.subtitle.collectAsState()
-    val subTracks by Player.subTracks.collectAsState()
+    val altyaziAcik by com.erkam.temasa.play.Altyazi.acik.collectAsState()
     val queueIdx by Player.queueIndex.collectAsState()
 
     var controls by remember { mutableStateOf(true) }
@@ -299,6 +298,8 @@ fun PlayerBox(
             }
         }
 
+        // Altyazı (çift dil): denetimlerin altında
+        AltyaziKatmani(fullscreen = fullscreen, yukari = controls || scrubbing, modifier = Modifier.fillMaxSize())
         val busy = (loading || buffering) && error == null
         AnimatedVisibility(controls || scrubbing || error != null || ended, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
             Box(Modifier.fillMaxSize().background(Color(0x80000000))) {
@@ -316,12 +317,9 @@ fun PlayerBox(
                             Text(video?.channel ?: "", color = Color(0xFFDDDDDD), fontSize = 12.sp, maxLines = 1)
                         }
                     } else Spacer(Modifier.weight(1f))
-                    if (subTracks.isNotEmpty()) {
-                        IconButton(onClick = {
-                            touch()
-                            Player.setSubtitle(if (subtitle == null) subTracks.firstOrNull { it.lang.startsWith("tr") } ?: subTracks.first() else null)
-                        }) {
-                            Icon(if (subtitle != null) Icons.Filled.ClosedCaption else Icons.Outlined.ClosedCaptionOff, "Altyazı", tint = Color.White)
+                    if (video?.live != true) {
+                        IconButton(onClick = { touch(); com.erkam.temasa.play.Altyazi.panel.value = true }) {
+                            Icon(if (altyaziAcik) Icons.Filled.ClosedCaption else Icons.Outlined.ClosedCaptionOff, "Altyazı", tint = Color.White)
                         }
                     }
                     IconButton(onClick = { touch(); onSettings() }) { Icon(Icons.Outlined.Settings, "Ayarlar", tint = Color.White) }
@@ -394,6 +392,7 @@ fun PlayerBox(
             )
         }
     }
+    if (com.erkam.temasa.play.Altyazi.panel.collectAsState().value) AltyaziPenceresi()
 }
 
 @Composable

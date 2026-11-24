@@ -256,7 +256,7 @@ object Player {
             frames.value = i.previewFrames.filter { it.frameWidth in 1..400 }.maxByOrNull { it.frameWidth }
                 ?: i.previewFrames.minByOrNull { it.frameWidth }
             subTracks.value = subtitleTracks(i)
-            if (Store.settings.value.subtitles) subtitle.value = pickDefaultSub(subTracks.value)
+            if (i.streamType != StreamType.LIVE_STREAM) Altyazi.yukle(v.id, i)
             related.value = Yt.convert(i.relatedItems).filterIsInstance<Video>().filter { it.id != v.id }
 
             if (dl != null) playLocal(full, dl, start ?: 0)
@@ -331,12 +331,8 @@ object Player {
             useDash -> dash(i, item) ?: progressive(i, item).also { useDash = false }
             else -> progressive(i, item)
         }
-        val withSubs = subtitle.value?.let { s ->
-            val cfg = MediaItem.SubtitleConfiguration.Builder(Uri.parse(s.url))
-                .setMimeType(s.mime).setLanguage(s.lang).setLabel(s.label)
-                .setSelectionFlags(C.SELECTION_FLAG_DEFAULT).build()
-            MergingMediaSource(src, SingleSampleMediaSource.Factory(dataSource).createMediaSource(cfg, C.TIME_UNSET))
-        } ?: src
+        // Altyazıyı oynatıcı değil, Temâşâ kendisi çizer (bkz. Altyazi)
+        val withSubs = src
         applyTrackParams()
         exo.setMediaSource(wrapItem(withSubs, item), startMs)
         exo.prepare()
@@ -454,7 +450,7 @@ object Player {
             b.setViewportSizeToPhysicalDisplaySize(app, true)
         }
         b.setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, audioOnly.value)
-        b.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, subtitle.value == null)
+        b.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
         exo.trackSelectionParameters = b.build()
     }
 

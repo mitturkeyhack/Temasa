@@ -101,8 +101,6 @@ fun PlayerSettingsSheet(onDismiss: () -> Unit) {
     val qualities by Player.qualities.collectAsState()
     val quality by Player.quality.collectAsState()
     val playingH by Player.playingHeight.collectAsState()
-    val subs by Player.subTracks.collectAsState()
-    val sub by Player.subtitle.collectAsState()
     val audioOnly by Player.audioOnly.collectAsState()
     val loop by Player.loop.collectAsState()
     val sleep by Player.sleepAt.collectAsState()
@@ -163,15 +161,13 @@ fun PlayerSettingsSheet(onDismiss: () -> Unit) {
                     Spacer(Modifier.height(10.dp))
                     Divider()
 
-                    MenuRow(Icons.Outlined.ClosedCaption, "Altyazı", sub?.label ?: if (subs.isEmpty()) "Yok" else "Kapalı") { if (subs.isNotEmpty()) page = 1 }
+                    MenuRow(Icons.Outlined.ClosedCaption, "Altyazı", com.erkam.temasa.play.Altyazi.etkinMod().ad) { onDismiss(); com.erkam.temasa.play.Altyazi.panel.value = true }
                     MenuRow(Icons.Outlined.Bedtime, "Uyku zamanlayıcı", sleepLabel(sleep)) { page = 2 }
                     SwitchRow("Sadece ses", "Ekran kapalıyken gibi: veri tasarrufu", audioOnly, Icons.Outlined.Headphones) { Player.setAudioOnly(it) }
                     SwitchRow("Döngü", null, loop, Icons.Outlined.Repeat) { Player.setLoop(it) }
                 }
                 1 -> {
-                    Section("Altyazı")
-                    OptionRow("Kapalı", sub == null) { Player.setSubtitle(null); page = 0 }
-                    subs.forEach { s -> OptionRow(s.label, sub?.url == s.url) { Player.setSubtitle(s); page = 0 } }
+                    Unit
                 }
                 2 -> {
                     Section("Uyku zamanlayıcı")
