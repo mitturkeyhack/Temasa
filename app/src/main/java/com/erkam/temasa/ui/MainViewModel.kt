@@ -100,6 +100,28 @@ class MainViewModel : ViewModel() {
 
     fun toast(s: String) { toast.tryEmit(s) }
 
+    /** Altta "GERİ AL" düğmeli bildirim */
+    val geriAlOlayi = MutableSharedFlow<Pair<String, () -> Unit>>(extraBufferCapacity = 4)
+    fun toastGeriAl(s: String, geriAl: () -> Unit) { geriAlOlayi.tryEmit(s to geriAl) }
+
+    /** "Abone olundu"ya basınca: zil seçenekleri ve abonelikten çık (kanal, çıkınca yapılacak) */
+    val zilKanal = MutableStateFlow<Pair<com.erkam.temasa.data.ChannelRef, () -> Unit>?>(null)
+
+    /** Sıradaki penceresi */
+    val siraAcik = MutableStateFlow(false)
+
+    fun sonraOynat(v: Video) {
+        val k = Player.siraKopya(); val calmiyordu = Player.video.value == null
+        Player.sonraOynat(v)
+        if (calmiyordu) toast("Oynatılıyor") else toastGeriAl("Sıradaki olarak eklendi") { Player.siraGeriYukle(k) }
+    }
+
+    fun siraEkle(v: Video) {
+        val k = Player.siraKopya(); val calmiyordu = Player.video.value == null
+        Player.siraEkle(v)
+        if (calmiyordu) toast("Oynatılıyor") else toastGeriAl("Sıraya eklendi") { Player.siraGeriYukle(k) }
+    }
+
     fun selectTab(t: Tab) {
         if (tab.value == t && stack.value.isEmpty()) {
             if (t == Tab.HOME) refreshHome()

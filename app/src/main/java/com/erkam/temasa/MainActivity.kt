@@ -195,6 +195,10 @@ class MainActivity : ComponentActivity() {
     private fun handle(i: Intent?) {
         i ?: return
         when {
+            i.getStringExtra("video") != null -> runCatching {
+                vm.open(com.erkam.temasa.data.Video.fromJson(org.json.JSONObject(i.getStringExtra("video")!!)))
+                i.removeExtra("video")
+            }
             i.getBooleanExtra("watch", false) -> if (Player.video.value != null) vm.expanded.value = true
             i.getBooleanExtra("downloads", false) -> vm.selectTab(Tab.DOWNLOADS)
             i.getBooleanExtra("update", false) -> { vm.selectTab(Tab.YOU); com.erkam.temasa.data.Updater.install(this) }

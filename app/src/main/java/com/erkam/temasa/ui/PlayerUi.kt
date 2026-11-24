@@ -456,6 +456,7 @@ fun SeekBar(
     var widthPx by remember { mutableFloatStateOf(1f) }
     val density = LocalDensity.current
     val frames by Player.frames.collectAsState()
+    val isi by Player.isi.collectAsState()
     val dur = duration.coerceAtLeast(1)
     val playFrac = if (drag) frac else (position.toFloat() / dur).coerceIn(0f, 1f)
     val bufFrac = (buffered.toFloat() / dur).coerceIn(0f, 1f)
@@ -477,6 +478,26 @@ fun SeekBar(
                 if (!chapter.isNullOrBlank()) Text(chapter, color = Color.White, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(Fmt.ms(ms), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.background(Color(0x99000000), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 1.dp))
+            }
+        }
+        // Sürüklerken: en çok tekrar oynatılan yerler (YouTube gibi ince dalga)
+        if (drag && isi.size > 2) {
+            Canvas(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(bottom = 5.dp).height(38.dp)) {
+                val w = size.width; val h = size.height
+                val p = androidx.compose.ui.graphics.Path()
+                p.moveTo(0f, h)
+                val n = isi.size
+                for (k in 0 until n) {
+                    val x = (k + 0.5f) / n * w
+                    val y = h - (0.08f + 0.92f * isi[k].coerceIn(0f, 1f)) * h
+                    if (k == 0) p.lineTo(0f, y)
+                    val onceki = if (k == 0) 0f else (k - 0.5f) / n * w
+                    val oy = if (k == 0) y else h - (0.08f + 0.92f * isi[k - 1].coerceIn(0f, 1f)) * h
+                    p.cubicTo((onceki + x) / 2, oy, (onceki + x) / 2, y, x, y)
+                }
+                p.lineTo(w, h - (0.08f + 0.92f * isi.last().coerceIn(0f, 1f)) * h)
+                p.lineTo(w, h); p.close()
+                drawPath(p, Color(0x59FFFFFF))
             }
         }
         if (visible) {

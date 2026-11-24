@@ -1,5 +1,7 @@
 package com.erkam.temasa.ui
 
+import com.erkam.temasa.data.Bildirimler
+
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
@@ -312,11 +314,14 @@ fun ChannelScreen(vm: MainViewModel, id: String, name: String) {
                     Box(
                         Modifier.padding(horizontal = 16.dp).fillMaxWidth().height(44.dp).clip(RoundedCornerShape(22.dp))
                             .background(if (isSub) C.chip else C.text)
-                            .clickable { scope.launch { if (!Account.subscribe(ref, !isSub)) vm.toast("İşlem YouTube'a iletilemedi") else if (!isSub) vm.toast("Abone olundu") } },
+                            .clickable {
+                                if (isSub) vm.zilKanal.value = ref to { scope.launch { if (!Account.subscribe(ref, false)) vm.toast("İşlem YouTube'a iletilemedi") } }
+                                else scope.launch { if (!Account.subscribe(ref, true)) vm.toast("İşlem YouTube'a iletilemedi") else vm.toast("Abone olundu") }
+                            },
                         contentAlignment = Alignment.Center
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (isSub) { Icon(Icons.Outlined.NotificationsNone, null, tint = C.text, modifier = Modifier.size(20.dp)); Spacer(Modifier.width(6.dp)) }
+                            if (isSub) { Icon(zilIkonu(ref.id), null, tint = C.text, modifier = Modifier.size(20.dp)); Spacer(Modifier.width(6.dp)) }
                             Text(if (isSub) "Abone olundu" else "Abone ol", color = if (isSub) C.text else C.bg, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
@@ -628,6 +633,9 @@ fun SettingsScreen(vm: MainViewModel) {
         BackBar(vm, "Ayarlar")
         LazyColumn(Modifier.fillMaxSize()) {
             item {
+                Head("Bildirimler")
+                SwitchRow("Abonelik bildirimleri", "Abone olduğun kanallar yeni video yükleyince", Bildirimler.acik.collectAsState().value) { v -> Bildirimler.acikSec(ctx, v) }
+
                 Head("Genel")
                 SwitchRow("Otomatik oynatma", "Video bitince sıradakine geç", s.autoplay) { v -> Store.updateSettings { it.copy(autoplay = v) } }
                 SwitchRow("Arka planda oynatma", "Uygulamadan çıkınca ya da ekran kapanınca devam et", s.background) { v -> Store.updateSettings { it.copy(background = v) } }

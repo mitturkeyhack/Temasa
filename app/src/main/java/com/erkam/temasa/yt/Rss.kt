@@ -23,6 +23,14 @@ object Rss {
             .map { it.v }
     }
 
+    /** Yayın zamanıyla birlikte (bildirimler için): (video, kanal kimliği, yayın anı ms) */
+    suspend fun zamanli(channels: List<ChannelRef>): List<Pair<Video, Long>> = coroutineScope {
+        val sem = Semaphore(6)
+        channels.map { c -> async(Dispatchers.IO) { sem.withPermit { runCatching { one(c) }.getOrDefault(emptyList()) } } }
+            .awaitAll().flatten()
+            .map { it.v to it.at.toInstant().toEpochMilli() }
+    }
+
     private fun unesc(s: String) = s.replace("&amp;", "&").replace("&quot;", "\"").replace("&#39;", "'").replace("&lt;", "<").replace("&gt;", ">")
 
     private fun one(c: ChannelRef): List<Item> {

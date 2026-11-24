@@ -231,13 +231,23 @@ fun SubsScreen(vm: MainViewModel, list: LazyListState) {
 @Composable
 fun DownloadsScreen(vm: MainViewModel) {
     val items by Downloads.items.collectAsState()
+    val akilliIdler by com.erkam.temasa.data.Akilli.idler.collectAsState()
     var confirmAll by remember { mutableStateOf(false) }
+    val akillilar = items.filter { it.video.id in akilliIdler }
+    val benimkiler = items.filter { it.video.id !in akilliIdler }
     Column(Modifier.fillMaxSize()) {
         TopBar(vm, "İndirilenler")
         LazyColumn(Modifier.fillMaxSize()) {
-            if (items.isEmpty()) item {
+            item(key = "akilli") { AkilliKart(akillilar) }
+            if (akillilar.isNotEmpty()) {
+                item { Text("Akıllı indirilenler", style = T.section, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 6.dp)) }
+                items(akillilar, key = { "a" + it.video.id }) { d -> IndirmeSatiri(vm, d, akilli = true) }
+            }
+            if (benimkiler.isEmpty() && akillilar.isNotEmpty()) item { Spacer(Modifier.height(8.dp)) }
+            else if (benimkiler.isEmpty()) item {
                 Empty(Icons.Outlined.Download, "İndirilen video yok", "Bir videonun altındaki İndir düğmesine bas. İnternetsiz de izleyebilirsin.")
             } else item {
+                if (akillilar.isNotEmpty()) Text("Senin indirdiklerin", style = T.section, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp))
                 val total = Downloads.totalBytes()
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -247,23 +257,7 @@ fun DownloadsScreen(vm: MainViewModel) {
                     Text("Sadece Temâşâ içinde açılır, galeride görünmez.", style = T.meta)
                 }
             }
-            items(items, key = { "d" + it.video.id }) { d ->
-                VideoRow(
-                    d.video,
-                    onClick = { if (d.done) vm.open(d.video) else if (d.failed) Downloads.retry(d.video.id) },
-                    onMore = { Downloads.delete(d.video.id) },
-                    sub = when {
-                        d.done -> "${d.video.channel} · ${d.height}p · ${Fmt.bytes(d.total)}"
-                        d.failed -> "İndirilemedi · yeniden denemek için dokun"
-                        d.total == 0L -> "Hazırlanıyor..."
-                        else -> "%${(d.progress * 100).toInt()} · ${Fmt.bytes(d.speed)}/sn"
-                    },
-                    extra = if (!d.done && !d.failed) ({
-                        Spacer(Modifier.height(6.dp))
-                        LinearProgressIndicator(progress = { d.progress }, color = C.red, trackColor = C.chipHi, modifier = Modifier.fillMaxWidth().height(3.dp))
-                    }) else null,
-                )
-            }
+            items(benimkiler, key = { "d" + it.video.id }) { d -> IndirmeSatiri(vm, d, akilli = false) }
         }
     }
     if (confirmAll) androidx.compose.material3.AlertDialog(
@@ -272,6 +266,101 @@ fun DownloadsScreen(vm: MainViewModel) {
         confirmButton = { androidx.compose.material3.TextButton(onClick = { Downloads.deleteAll(); confirmAll = false }) { Text("Sil", color = C.red) } },
         dismissButton = { androidx.compose.material3.TextButton(onClick = { confirmAll = false }) { Text("İptal", color = C.text) } },
     )
+}
+
+@Composable
+private fun IndirmeSatiri(vm: MainViewModel, d: com.erkam.temasa.data.DItem, akilli: Boolean) {
+    VideoRow(
+        d.video,
+        onClick = { if (d.done) vm.open(d.video) else if (d.failed) Downloads.retry(d.video.id) },
+        onMore = { Downloads.delete(d.video.id) },
+        sub = when {
+            d.done -> "${d.video.channel} · ${d.height}p · ${Fmt.bytes(d.total)}"
+            d.failed -> "İndirilemedi · yeniden denemek için dokun"
+            d.total == 0L -> "Hazırlanıyor..."
+            else -> "%${(d.progress * 100).toInt()} · ${Fmt.bytes(d.speed)}/sn"
+        },
+        extra = {
+            if (akilli && d.done) {
+                Spacer(Modifier.height(4.dp))
+                Text("✦ Akıllı", color = C.accent, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(Color(0x2422C3B3)).padding(horizontal = 7.dp, vertical = 2.dp))
+            }
+            if (!d.done && !d.failed) {
+                Spacer(Modifier.height(6.dp))
+                LinearProgressIndicator(progress = { d.progress }, color = C.red, trackColor = C.chipHi, modifier = Modifier.fillMaxWidth().height(3.dp))
+            }
+        },
+    )
+}
+
+/** Akıllı indirmeler kartı (tasarım 24) */
+@Composable
+private fun AkilliKart(akillilar: List<com.erkam.temasa.data.DItem>) {
+    val ctx = LocalContext.current
+    val A = com.erkam.temasa.data.Akilli
+    val acik by A.acik.collectAsState()
+    val adet by A.adet.collectAsState()
+    val kalite by A.kalite.collectAsState()
+    val son by A.sonCalisma.collectAsState()
+    val calisiyor by A.calisiyor.collectAsState()
+    var ayar by remember { mutableStateOf(false) }
+    val hazir = akillilar.count { it.done }
+    val boyut = akillilar.filter { it.done }.sumOf { it.total }
+    Column(
+        Modifier.padding(horizontal = 12.dp, vertical = 6.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp))
+            .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(Color(0x2E22C3B3), Color(0x0F22C3B3))))
+            .border(1.dp, C.accent.copy(alpha = 0.35f), RoundedCornerShape(16.dp)).padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(36.dp).clip(androidx.compose.foundation.shape.CircleShape).background(Color(0x3322C3B3)), contentAlignment = Alignment.Center) {
+                Icon(Icons.Outlined.Download, null, tint = C.accent, modifier = Modifier.size(20.dp))
+            }
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f).clickable { ayar = !ayar }) {
+                Text("Akıllı indirmeler", color = C.text, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                Text("Wi-Fi'de, izlediklerine göre kendiliğinden", color = Color(0xFFBFE6E1), fontSize = 12.sp)
+            }
+            androidx.compose.material3.Switch(
+                checked = acik, onCheckedChange = { A.acikSec(ctx, it) },
+                colors = androidx.compose.material3.SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = C.accent,
+                    uncheckedTrackColor = Color(0xFF4A4A4A), uncheckedBorderColor = Color(0xFF4A4A4A), uncheckedThumbColor = Color(0xFFCFCFCF))
+            )
+        }
+        if (acik) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("$hazir video" to "hazır", Fmt.bytes(boyut) to "yer kaplıyor", "${kalite}p" to "kalite").forEach { (b, a) ->
+                    Column(Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).background(Color(0x40000000)).clickable { ayar = !ayar }.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                        Text(b, color = C.text, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text(a, color = Color(0xFFBFE6E1), fontSize = 11.sp)
+                    }
+                }
+            }
+            if (ayar) {
+                Text("Kaç video", color = Color(0xFFBFE6E1), fontSize = 12.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(4, 8, 12, 20).forEach { n -> Chip("$n", n == adet) { A.adetSec(n) } }
+                }
+                Text("Kalite", color = Color(0xFFBFE6E1), fontSize = 12.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(360, 480, 720, 1080).forEach { h -> Chip("${h}p", h == kalite) { A.kaliteSec(h) } }
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    when {
+                        calisiyor -> "İndiriliyor…"
+                        son > 0 -> "Son güncelleme: " + java.text.SimpleDateFormat("d MMM HH:mm", java.util.Locale("tr")).format(java.util.Date(son))
+                        else -> "Wi-Fi'ye bağlanınca başlar"
+                    } + " · İzlediklerin silinir, yerine yenileri gelir",
+                    color = Color(0xFFBFE6E1), fontSize = 12.sp, modifier = Modifier.weight(1f)
+                )
+                if (!calisiyor) Text("Şimdi", color = C.accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { A.simdi(ctx) }.padding(horizontal = 8.dp, vertical = 4.dp))
+            }
+        }
+    }
 }
 
 // ---------------- Sen ----------------

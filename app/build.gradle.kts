@@ -78,6 +78,7 @@ dependencies {
     implementation("androidx.media3:media3-ui:$media3")
     implementation("androidx.media3:media3-exoplayer-hls:$media3")
     implementation("androidx.webkit:webkit:1.18.0")
+    implementation("androidx.work:work-runtime-ktx:2.10.5")
 
     // Arayüz
     implementation(platform("androidx.compose:compose-bom:2026.11.01"))

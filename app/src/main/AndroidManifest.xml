@@ -92,6 +92,10 @@
             android:name=".play.InstallReceiver"
             android:exported="false" />
 
+        <receiver
+            android:name=".data.BildirimAlici"
+            android:exported="false" />
+
         <service
             android:name=".play.DownloadService"
             android:exported="false"

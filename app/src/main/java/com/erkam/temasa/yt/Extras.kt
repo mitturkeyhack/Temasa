@@ -22,6 +22,21 @@ data class Skip(val start: Long, val end: Long, val category: String) {
 data class Votes(val likes: Long, val dislikes: Long)
 
 object Extras {
+    /** En çok tekrar oynatılan yerler: 0..1 arası yoğunluklar (genelde 100 nokta). Yoksa boş. */
+    suspend fun tekrarIzlenen(id: String): List<Float> = withContext(Dispatchers.IO) {
+        runCatching {
+            val o = Inner.post("next", JSONObject().put("videoId", id), false)
+            val m = o.optJSONObject("frameworkUpdates")?.optJSONObject("entityBatchUpdate")?.optJSONArray("mutations") ?: return@runCatching emptyList()
+            for (i in 0 until m.length()) {
+                val l = m.optJSONObject(i)?.optJSONObject("payload")?.optJSONObject("macroMarkersListEntity")?.optJSONObject("markersList") ?: continue
+                if (!l.optString("markerType").contains("HEATMAP")) continue
+                val a = l.optJSONArray("markers") ?: continue
+                return@runCatching (0 until a.length()).map { j -> a.optJSONObject(j)?.optDouble("intensityScoreNormalized", 0.0)?.toFloat() ?: 0f }
+            }
+            emptyList()
+        }.getOrDefault(emptyList())
+    }
+
     private val CATS = listOf("sponsor", "selfpromo", "interaction")
 
     suspend fun sponsors(id: String): List<Skip> = withContext(Dispatchers.IO) {

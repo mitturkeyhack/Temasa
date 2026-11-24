@@ -94,11 +94,69 @@ object Player {
     val frames = MutableStateFlow<Frameset?>(null)
 
     val subTracks = MutableStateFlow<List<SubTrack>>(emptyList())
+    /** En çok tekrar oynatılan yerler (ilerleme çubuğundaki dalga) */
+    val isi = MutableStateFlow<List<Float>>(emptyList())
     val subtitle = MutableStateFlow<SubTrack?>(null)
 
     val related = MutableStateFlow<List<Video>>(emptyList())
     val queue = MutableStateFlow<List<Video>>(emptyList())
     val queueIndex = MutableStateFlow(-1)
+    /** Sıra bitince baştan başlasın */
+    val siraTekrar = MutableStateFlow(false)
+
+    // ---------- Sıra (YouTube'daki "Sonra oynat" / "Sıraya ekle") ----------
+
+    /** Sıranın şu anki hâli: geri almak için */
+    fun siraKopya(): Pair<List<Video>, Int> = queue.value to queueIndex.value
+    fun siraGeriYukle(k: Pair<List<Video>, Int>) { queue.value = k.first; queueIndex.value = k.second }
+
+    /** Sıra yoksa şu anki videodan bir sıra başlat; videoyu (varsa) eski yerinden çıkar */
+    private fun siraHazirla(v: Video): Pair<MutableList<Video>, Int>? {
+        val cur = video.value ?: return null
+        var q = queue.value; var i = queueIndex.value
+        if (i < 0 || q.isEmpty() || q.getOrNull(i)?.id != cur.id) { q = listOf(cur); i = 0 }
+        val l = q.filterIndexed { k, x -> k == i || x.id != v.id }.toMutableList()
+        return l to l.indexOfFirst { it.id == cur.id }.coerceAtLeast(0)
+    }
+
+    /** Hemen sıradaki olsun. Hiçbir şey çalmıyorsa küçük oynatıcıda başlar. */
+    fun sonraOynat(v: Video) {
+        val (l, i) = siraHazirla(v) ?: run { play(v); return }
+        if (l[i].id == v.id) return
+        l.add(i + 1, v); queue.value = l; queueIndex.value = i
+    }
+
+    /** Sıranın sonuna ekle */
+    fun siraEkle(v: Video) {
+        val (l, i) = siraHazirla(v) ?: run { play(v); return }
+        if (l[i].id == v.id) return
+        l.add(v); queue.value = l; queueIndex.value = i
+    }
+
+    fun siradanCikar(k: Int) {
+        val i = queueIndex.value
+        if (k == i || k !in queue.value.indices) return
+        queue.value = queue.value.toMutableList().apply { removeAt(k) }
+        if (k < i) queueIndex.value = i - 1
+    }
+
+    fun siraTasi(nereden: Int, nereye: Int) {
+        val q = queue.value.toMutableList()
+        if (nereden !in q.indices || nereye !in q.indices || nereden == nereye) return
+        val cur = q.getOrNull(queueIndex.value)?.id
+        q.add(nereye, q.removeAt(nereden))
+        queue.value = q
+        queueIndex.value = q.indexOfFirst { it.id == cur }
+    }
+
+    /** Şu ankinden sonrakileri karıştır */
+    fun siraKaristir() {
+        val i = queueIndex.value; val q = queue.value
+        if (i < 0 || q.size - i < 3) return
+        queue.value = q.take(i + 1) + q.drop(i + 1).shuffled()
+    }
+
+    fun siraTemizle() { queue.value = emptyList(); queueIndex.value = -1; siraTekrar.value = false }
 
     /** Uyku zamanlayıcı: saat (ms) ya da END_OF_VIDEO */
     val sleepAt = MutableStateFlow<Long?>(null)
@@ -220,7 +278,7 @@ object Player {
         error.value = null
         loading.value = true
         chapters.value = emptyList(); skips.value = emptyList(); related.value = emptyList()
-        frames.value = null; subTracks.value = emptyList(); subtitle.value = null
+        frames.value = null; subTracks.value = emptyList(); subtitle.value = null; isi.value = emptyList()
         qualities.value = emptyList(); quality.value = 0; playingHeight.value = 0
         ignoredSkips.clear(); retries = 0; useDash = true
         ended.value = false; position.value = 0; duration.value = v.duration * 1000; buffered.value = 0
@@ -263,6 +321,7 @@ object Player {
             else prepare(i, start ?: 0, autoPlay = true)
 
 
+            if (i.streamType != StreamType.LIVE_STREAM) launch { Extras.tekrarIzlenen(v.id).let { h -> if (video.value?.id == v.id) isi.value = h } }
             if (Store.settings.value.sponsorBlock && i.streamType != StreamType.LIVE_STREAM) {
                 launch { skips.value = Extras.sponsors(v.id) }
             }
@@ -559,6 +618,7 @@ object Player {
 
     fun next() {
         val q = queue.value; val i = queueIndex.value
+        if (i >= 0 && i == q.size - 1 && siraTekrar.value && q.size > 1) { play(q[0], 0); return }
         if (i >= 0 && i < q.size - 1) {
             val j = (i + 1 until q.size).firstOrNull { uygun(q[it]) }
             if (j != null) { play(q[j], 0); return }
@@ -586,7 +646,7 @@ object Player {
         video.value?.let { Store.setPos(it.id, exo.duration, exo.duration) }
         if (sleepAt.value == END_OF_VIDEO) { sleepAt.value = null; return }
         if (loop.value) return
-        val inQueue = queueIndex.value >= 0 && queueIndex.value < queue.value.size - 1
+        val inQueue = queueIndex.value >= 0 && (queueIndex.value < queue.value.size - 1 || (siraTekrar.value && queue.value.size > 1))
         if (inQueue || Store.settings.value.autoplay) scope.launch { delay(1200); if (ended.value) next() }
     }
 

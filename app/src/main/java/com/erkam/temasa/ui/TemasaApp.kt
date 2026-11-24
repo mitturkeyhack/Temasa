@@ -1,6 +1,8 @@
 package com.erkam.temasa.ui
 
 import android.content.Intent
+import androidx.compose.material.icons.automirrored.outlined.QueueMusic
+import androidx.compose.material.icons.automirrored.outlined.PlaylistPlay
 import androidx.compose.material.icons.outlined.NotInterested
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material.icons.outlined.Block
@@ -103,6 +105,15 @@ fun TemasaApp(vm: MainViewModel) {
         val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
         val snack = remember { SnackbarHostState() }
         LaunchedEffect(Unit) { vm.toast.collect { snack.currentSnackbarData?.dismiss(); snack.showSnackbar(it) } }
+        LaunchedEffect(Unit) {
+            vm.geriAlOlayi.collect { (m, geriAl) ->
+                snack.currentSnackbarData?.dismiss()
+                launch {
+                    val r = snack.showSnackbar(m, actionLabel = "GERİ AL", duration = androidx.compose.material3.SnackbarDuration.Short)
+                    if (r == androidx.compose.material3.SnackbarResult.ActionPerformed) geriAl()
+                }
+            }
+        }
         LaunchedEffect(video) { if (video == null) { vm.expanded.value = false; vm.fullscreen.value = false } }
 
         if (inPip) {
@@ -112,7 +123,7 @@ fun TemasaApp(vm: MainViewModel) {
         if (video != null && (fullscreen || (expanded && landscape))) {
             Box(Modifier.fillMaxSize().background(Color.Black)) {
                 FullscreenPlayer(vm)
-                SnackbarHost(snack, Modifier.align(Alignment.BottomCenter)) { Snackbar(it, containerColor = C.surface, contentColor = C.text) }
+                SnackbarHost(snack, Modifier.align(Alignment.BottomCenter)) { Snackbar(it, containerColor = C.surface, contentColor = C.text, actionColor = C.blue) }
             }
             return@TemasaTheme
         }
@@ -167,7 +178,7 @@ fun TemasaApp(vm: MainViewModel) {
                 }
             }
             SnackbarHost(snack, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 120.dp)) {
-                Snackbar(it, containerColor = C.surface, contentColor = C.text)
+                Snackbar(it, containerColor = C.surface, contentColor = C.text, actionColor = C.blue)
             }
         }
 
@@ -175,6 +186,8 @@ fun TemasaApp(vm: MainViewModel) {
         vm.saveTo.collectAsState().value?.let { SaveToSheet(vm, it) }
         vm.downloadFor.collectAsState().value?.let { DownloadDialog(vm, it) }
         vm.yzVideo.collectAsState().value?.let { YzPenceresi(vm, it) }
+        if (vm.siraAcik.collectAsState().value) SiraPenceresi(vm)
+        vm.zilKanal.collectAsState().value?.let { (k, cik) -> ZilPenceresi(vm, k, cik) }
         if (vm.anahtarSor.collectAsState().value) AnahtarPenceresi(vm)
     }
 }
@@ -232,6 +245,10 @@ private fun VideoMenu(vm: MainViewModel, v: Video) {
         Column(Modifier.navigationBarsPadding().padding(bottom = 8.dp)) {
             Text(v.title, style = T.body.copy(fontWeight = FontWeight.Medium), maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
             MenuRow(Icons.Outlined.PlayCircle, "Oynat") { dismiss(); vm.open(v) }
+            if (Player.video.value?.id != v.id) {
+                MenuRow(Icons.AutoMirrored.Outlined.PlaylistPlay, "Sonra oynat") { dismiss(); vm.sonraOynat(v) }
+                MenuRow(Icons.AutoMirrored.Outlined.QueueMusic, "Sıraya ekle") { dismiss(); vm.siraEkle(v) }
+            }
             MenuRow(Icons.Outlined.WatchLater, if (Store.isLater(v.id)) "Sonra izle'den kaldır" else "Sonra izle'ye kaydet") {
                 val on = !Store.isLater(v.id); dismiss()
                 scope.launch { Account.watchLater(v, on); vm.toast(if (on) "Sonra izle'ye kaydedildi" else "Kaldırıldı") }

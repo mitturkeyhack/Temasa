@@ -117,14 +117,17 @@ object Downloads {
         return orig.filter { it.format == MediaFormat.M4A }.maxByOrNull { it.averageBitrate } ?: orig.maxByOrNull { it.averageBitrate }
     }
 
-    fun start(v: Video, height: Int) {
+    /** servis = false: arka plan işçisi (akıllı indirme) kendisi bekler, bildirimli hizmet açılmaz */
+    fun start(v: Video, height: Int, servis: Boolean = true) {
         val d = dir(v.id).apply { mkdirs() }
         val item = DItem(v, height)
         items.update { l -> listOf(item) + l.filter { it.video.id != v.id } }
         writeMeta(d, item)
         active = true
-        val i = Intent(app, DownloadService::class.java)
-        if (Build.VERSION.SDK_INT >= 26) app.startForegroundService(i) else app.startService(i)
+        if (servis) runCatching {
+            val i = Intent(app, DownloadService::class.java)
+            if (Build.VERSION.SDK_INT >= 26) app.startForegroundService(i) else app.startService(i)
+        }
         queue.trySend(v.id)
     }
 

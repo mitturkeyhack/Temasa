@@ -25,6 +25,8 @@ class App : Application(), SingletonImageLoader.Factory {
         Downloads.init(this)
         Player.init(this)
         com.erkam.temasa.play.Altyazi.init(this)
+        com.erkam.temasa.data.Bildirimler.init(this)
+        com.erkam.temasa.data.Akilli.init(this)
         com.erkam.temasa.yz.Evren.init(this)
         com.erkam.temasa.yz.Yz.init(this)
     }

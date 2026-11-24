@@ -204,9 +204,11 @@ fun WatchScreen(vm: MainViewModel, onMinimize: () -> Unit) {
                     Spacer(Modifier.width(8.dp))
                     if (v.channelId.isNotEmpty()) {
                         val ref = ChannelRef(v.channelId, v.channel, v.channelAvatar)
-                        if (isSub) PillButton("Abone olundu", Icons.Outlined.NotificationsNone, onClick = {
-                            subscribed = false
-                            scope.launch { if (!Account.subscribe(ref, false)) vm.toast("Abonelikten çıkılamadı") }
+                        if (isSub) PillButton("Abone olundu", zilIkonu(ref.id), onClick = {
+                            vm.zilKanal.value = ref to {
+                                subscribed = false
+                                scope.launch { if (!Account.subscribe(ref, false)) vm.toast("Abonelikten çıkılamadı") }
+                            }
                         }) else Box(
                             Modifier.height(36.dp).clip(RoundedCornerShape(18.dp)).background(C.text)
                                 .clickable {
@@ -305,7 +307,13 @@ fun WatchScreen(vm: MainViewModel, onMinimize: () -> Unit) {
             }
             if (queue.isNotEmpty()) {
                 item(key = "queueHead") {
-                    Text("Sıradaki · ${qi + 1}/${queue.size}", style = T.section, modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp))
+                    Row(
+                        Modifier.fillMaxWidth().clickable { vm.siraAcik.value = true }.padding(start = 12.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Sıradaki · ${qi + 1}/${queue.size}", style = T.section, modifier = Modifier.weight(1f))
+                        Text("Tümünü gör", color = C.blue, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    }
                 }
                 itemsIndexed(queue.drop(qi + 1).take(8), key = { i, x -> "q$i${x.id}" }) { _, x ->
                     VideoRow(x, onClick = { vm.open(x, queue) }, thumbWidth = 128.dp)
