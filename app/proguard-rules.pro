@@ -14,3 +14,10 @@
 -dontwarn com.google.re2j.**
 -dontwarn org.jsoup.**
 -keepattributes Signature,InnerClasses,EnclosingMethod,*Annotation*
+
+# WorkManager / Room: veritabanı sınıfı yansıma (reflection) ile kurulur; yapıcısı silinmesin
+# (silinince uygulama açılışta çöküyordu: NoSuchMethodException WorkDatabase_Impl.<init>)
+-keep class * extends androidx.room.RoomDatabase { <init>(...); }
+-keep class androidx.work.impl.WorkDatabase_Impl { <init>(...); }
+-keep class * extends androidx.work.ListenableWorker { public <init>(android.content.Context, androidx.work.WorkerParameters); }
+-keep class * extends androidx.work.InputMerger { <init>(...); }
