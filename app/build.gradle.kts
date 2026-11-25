@@ -56,6 +56,8 @@ android {
         }
     }
 
+    testOptions { unitTests { isIncludeAndroidResources = true; isReturnDefaultValues = true } }
+
     lint {
         checkReleaseBuilds = false
         abortOnError = false
@@ -79,6 +81,11 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-hls:$media3")
     implementation("androidx.webkit:webkit:1.18.0")
     implementation("androidx.work:work-runtime-ktx:2.10.5")
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.16")
+    testImplementation("androidx.test:core-ktx:1.6.1")
+    testImplementation("androidx.test.ext:junit:1.2.1")
+    testImplementation("androidx.work:work-testing:2.10.5")
 
     // Arayüz
     implementation(platform("androidx.compose:compose-bom:2026.11.01"))
@@ -94,4 +101,12 @@ dependencies {
     implementation("io.coil-kt.coil3:coil-compose:3.6.3")
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.6.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
+}
+
+tasks.withType<Test>().configureEach {
+    testLogging {
+        showStandardStreams = true
+        events("passed", "failed")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
 }
