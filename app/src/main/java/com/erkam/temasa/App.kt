@@ -19,16 +19,19 @@ import com.erkam.temasa.yt.Yt
 class App : Application(), SingletonImageLoader.Factory {
     override fun onCreate() {
         super.onCreate()
+        HataKaydi.kur(this)
+        // Temel parçalar: bunlar olmadan uygulama çalışamaz
         Store.init(this)
         Account.init()
         Yt.init()
         Downloads.init(this)
         Player.init(this)
-        com.erkam.temasa.play.Altyazi.init(this)
-        com.erkam.temasa.data.Bildirimler.init(this)
-        com.erkam.temasa.data.Akilli.init(this)
-        com.erkam.temasa.yz.Evren.init(this)
-        com.erkam.temasa.yz.Yz.init(this)
+        // Ek parçalar: biri hata verse bile uygulama kapanmasın, hata kaydedilsin
+        HataKaydi.guvenli("Altyazı") { com.erkam.temasa.play.Altyazi.init(this) }
+        HataKaydi.guvenli("Bildirimler") { com.erkam.temasa.data.Bildirimler.init(this) }
+        HataKaydi.guvenli("Akıllı indirme") { com.erkam.temasa.data.Akilli.init(this) }
+        HataKaydi.guvenli("Yapay zekâ") { com.erkam.temasa.yz.Evren.init(this) }
+        HataKaydi.guvenli("Yapay zekâ 2") { com.erkam.temasa.yz.Yz.init(this) }
     }
 
     override fun newImageLoader(context: PlatformContext): ImageLoader =

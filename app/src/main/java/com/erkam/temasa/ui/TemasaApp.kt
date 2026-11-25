@@ -1,6 +1,8 @@
 package com.erkam.temasa.ui
 
 import android.content.Intent
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.automirrored.outlined.QueueMusic
 import androidx.compose.material.icons.automirrored.outlined.PlaylistPlay
 import androidx.compose.material.icons.outlined.NotInterested
@@ -186,6 +188,7 @@ fun TemasaApp(vm: MainViewModel) {
         vm.saveTo.collectAsState().value?.let { SaveToSheet(vm, it) }
         vm.downloadFor.collectAsState().value?.let { DownloadDialog(vm, it) }
         vm.yzVideo.collectAsState().value?.let { YzPenceresi(vm, it) }
+        com.erkam.temasa.HataKaydi.rapor.collectAsState().value?.let { r -> HataRaporuPenceresi(vm, r) }
         if (vm.siraAcik.collectAsState().value) SiraPenceresi(vm)
         vm.zilKanal.collectAsState().value?.let { (k, cik) -> ZilPenceresi(vm, k, cik) }
         if (vm.anahtarSor.collectAsState().value) AnahtarPenceresi(vm)
@@ -368,5 +371,32 @@ private fun DownloadDialog(vm: MainViewModel, v: Video) {
             }) { Text("İndir", color = C.blue) }
         },
         dismissButton = { TextButton(onClick = { vm.downloadFor.value = null }) { Text("İptal", color = C.text) } },
+    )
+}
+
+
+/** Son kapanmanın raporu: kopyalayıp gönderilebilir */
+@Composable
+private fun HataRaporuPenceresi(vm: MainViewModel, r: String) {
+    val clip = androidx.compose.ui.platform.LocalClipboardManager.current
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = { com.erkam.temasa.HataKaydi.goruldu() }, containerColor = C.surface,
+        title = { Text("Son kapanmanın raporu", color = C.text) },
+        text = {
+            Column {
+                Text("Temâşâ beklenmedik şekilde kapanmış. Bu raporu kopyalayıp gönderirsen sebebini bulup düzeltebiliriz.", style = T.body.copy(color = C.text2))
+                Spacer(Modifier.height(10.dp))
+                Box(Modifier.then(Modifier.heightIn(max = 260.dp)).clip(RoundedCornerShape(10.dp)).background(Color(0xFF111111)).padding(10.dp)) {
+                    Text(r, color = Color(0xFFCFCFCF), fontSize = 11.sp, lineHeight = 14.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        modifier = Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()))
+                }
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(onClick = {
+                clip.setText(androidx.compose.ui.text.AnnotatedString(r)); vm.toast("Rapor kopyalandı"); com.erkam.temasa.HataKaydi.goruldu()
+            }) { Text("Kopyala", color = C.blue) }
+        },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = { com.erkam.temasa.HataKaydi.goruldu() }) { Text("Kapat", color = C.text) } },
     )
 }

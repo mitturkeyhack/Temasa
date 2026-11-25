@@ -211,8 +211,8 @@ object Downloads {
                 }
                 update(id) { it.copy(bytes = it.total.coerceAtLeast(done.get()), total = it.total.coerceAtLeast(done.get()), done = true, speed = 0) }
                 state(id)?.let { writeMeta(d, it) }
-            } catch (e: Exception) {
-                if (!coroutineContext.isActive) return@launch
+            } catch (e: Throwable) {
+                if (e is kotlinx.coroutines.CancellationException || !coroutineContext.isActive) return@launch
                 update(id) { it.copy(failed = true, speed = 0) }
                 state(id)?.let { writeMeta(d, it) }
             }

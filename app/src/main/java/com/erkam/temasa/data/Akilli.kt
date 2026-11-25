@@ -151,7 +151,10 @@ object Akilli {
 
 class AkilliIsci(ctx: Context, p: WorkerParameters) : CoroutineWorker(ctx, p) {
     override suspend fun doWork(): Result {
-        runCatching { Akilli.calis() }
+        try { Akilli.calis() } catch (e: Throwable) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            com.erkam.temasa.HataKaydi.yaz("Hata (uygulama kapanmadı)", "Akıllı indirme", e)
+        }
         return Result.success()
     }
 }

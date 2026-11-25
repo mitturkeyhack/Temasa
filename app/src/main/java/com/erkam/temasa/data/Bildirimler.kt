@@ -127,7 +127,11 @@ object Bildirimler {
         }.getOrNull()
     }
 
-    private fun goster(ctx: Context, v: Video) {
+    private fun goster(ctx: Context, v: Video) = runCatching { gosterIc(ctx, v) }.onFailure {
+        com.erkam.temasa.HataKaydi.yaz("Hata (uygulama kapanmadı)", "Bildirim gösterme", it)
+    }
+
+    private fun gosterIc(ctx: Context, v: Video) {
         val nm = NotificationManagerCompat.from(ctx)
         if (!nm.areNotificationsEnabled()) return
         val no = v.id.hashCode()
@@ -156,7 +160,10 @@ object Bildirimler {
 
 class YeniVideoIsci(ctx: Context, p: WorkerParameters) : CoroutineWorker(ctx, p) {
     override suspend fun doWork(): Result {
-        runCatching { Bildirimler.kontrol(applicationContext) }
+        try { Bildirimler.kontrol(applicationContext) } catch (e: Throwable) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            com.erkam.temasa.HataKaydi.yaz("Hata (uygulama kapanmadı)", "Bildirim kontrolü", e)
+        }
         return Result.success()
     }
 }
@@ -170,7 +177,7 @@ class BildirimAlici : BroadcastReceiver() {
         val bitir = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             runCatching { com.erkam.temasa.account.Account.watchLater(v, true) }
-            bitir.finish()
+            runCatching { bitir.finish() }
         }
     }
 }
